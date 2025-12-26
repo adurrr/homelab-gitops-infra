@@ -1,0 +1,55 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Ansible Inventory Template
+# =============================================================================
+# Copy to inventory.yml and fill in your real values.
+#   cp ansible/inventory.example.yml ansible/inventory.yml
+#   vim ansible/inventory.yml
+#
+# inventory.yml is gitignored: never commit real hostnames/IPs.
+#
+# SSH ACCESS: choose ONE option:
+#
+#   Option A (recommended): SSH key auth
+#     1. Generate a key: ssh-keygen -t ed25519
+#     2. Copy to nodes:  ssh-copy-id root@<IP>
+#     3. Uncomment ansible_ssh_private_key_file below
+#
+#   Option B: Password auth
+#     1. Install sshpass: sudo apt install sshpass
+#     2. Add ansible_password to each host
+#
+# SUDO ACCESS:
+#   ansible.cfg has become_ask_pass = True, so Ansible will prompt for
+#   the sudo password when running. If your SSH user has passwordless sudo,
+#   set become_ask_pass = False in ansible.cfg instead.
+#
+# TEST CONNECTIVITY:
+#   make ansible-ping
+#   # or manually:
+#   ansible all -m ping --ask-become-pass
+
+all:
+  children:
+    k3s:
+      children:
+        servers:
+          hosts:
+            node-server:
+              ansible_host: 192.168.0.10    # Your server IP
+              ansible_user: root              # Or your SSH user
+              # Option A: SSH key auth (recommended)
+              # ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+              # Option B: Password auth (install sshpass first)
+              # ansible_password: your_ssh_password
+          vars:
+            ansible_ssh_common_args: -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentityAgent=/tmp/ssh-agent/server.sock -o AddKeysToAgent=yes
+
+        agents:
+          hosts:
+            node-worker:
+              ansible_host: 192.168.0.11    # Your agent IP
+              ansible_user: root
+              # ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+              # ansible_password: your_ssh_password
+          vars:
+            ansible_ssh_common_args: -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null

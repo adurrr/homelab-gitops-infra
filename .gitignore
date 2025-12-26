@@ -1,0 +1,78 @@
+# =============================================================================
+# Homelab GitOps Infrastructure — Git Ignore
+# =============================================================================
+# This file ensures sensitive data and local configuration are never committed.
+# All environment-specific values live in .env files (see infra/env.example).
+
+# -----------------------------------------------------------------------------
+# Environment & Secrets — NEVER commit these
+# -----------------------------------------------------------------------------
+**/.env
+**/.env.*
+!**/.env.example
+infra/.env
+*.secret
+*.secret.yaml
+*.secret.yml
+*secret*.yaml
+*secret*.yml
+!**/secrets/README.md
+!**/secrets/*.example
+
+# Kubernetes secrets
+**/sealed-secrets/*.yaml
+!**/secrets/.gitkeep
+
+# Cilium values — contains real cluster config, use values.example.yaml as template
+infra/cilium/values.yaml
+!infra/cilium/values.example.yaml
+
+# TLS certificates and keys
+*.key
+*.crt
+*.pem
+*.p12
+*.pfx
+*.jks
+
+# Kubeconfig files
+kubeconfig
+*.kubeconfig
+config-homelab
+
+# -----------------------------------------------------------------------------
+# K3s / Cluster state
+# -----------------------------------------------------------------------------
+k3s.yaml
+*.kubeconfig
+
+# -----------------------------------------------------------------------------
+# Ansible
+# -----------------------------------------------------------------------------
+ansible/inventory.yml
+ansible/inventory.yaml
+ansible/*.log
+ansible/roles/*/tests/
+
+# -----------------------------------------------------------------------------
+# IDE & Editor files
+# -----------------------------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# -----------------------------------------------------------------------------
+# Tool output & caches
+# -----------------------------------------------------------------------------
+.helm/
+*.tgz
+.trivy-cache/
+.gocache/
+
+# -----------------------------------------------------------------------------
+# OS files
+# -----------------------------------------------------------------------------
+Thumbs.db

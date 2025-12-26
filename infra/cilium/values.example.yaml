@@ -1,0 +1,81 @@
+# =============================================================================
+# Cilium CNI: Helm values for K3s homelab (TEMPLATE)
+# =============================================================================
+# This is a TEMPLATE. Copy to values.yaml and customize with your real values.
+#   cp infra/cilium/values.example.yaml infra/cilium/values.yaml
+#   vim infra/cilium/values.yaml
+#
+# The values.yaml file is gitignored: your real IPs will never be committed.
+#
+# Installed via: cilium install --version 1.18.9 -f infra/cilium/values.yaml
+# Reference: https://docs.cilium.io/en/stable/installation/k3s
+#
+# Prerequisites:
+#   - K3s installed with --flannel-backend=none --disable-network-policy --disable-kube-proxy
+#   - KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+#   - Cilium CLI installed on admin machine (https://github.com/cilium/cilium-cli/releases)
+#
+# ⚠️  CRITICAL: Only use Cilium 1.18.x on ARM64/ARM64 SBC
+# Cilium 1.19.x causes silent host network death on ARM64 during agent startup.
+# All TCP connections time out while SSH daemon stays listening and BPF
+# never attaches to eth0. Verified broken on RPi 4B + K3s v1.35.4 + kernel 6.18.
+# See: https://github.com/cilium/cilium/issues/46010
+# =============================================================================
+
+# -- Replace kube-proxy with Cilium's eBPF-based implementation
+# REQUIRED: K3s must be started with --disable-kube-proxy
+kubeProxyReplacement: true
+
+# -- K3s API server address and port
+# Required when kube-proxy is replaced: Cilium needs to know how to reach the API server
+# Replace with your actual K3S_SERVER_IP
+k8sServiceHost: "192.168.0.10"
+k8sServicePort: 6443
+
+# -- Hubble observability: Cilium's network flow collector
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+
+# -- IP Address Management (IPAM)
+# Cluster Pool mode allocates pod CIDRs to nodes from a pool
+# IMPORTANT: This must match your K3s cluster CIDR.
+# If you changed the default in K3s server config, update it here too.
+ipam:
+  operator:
+    clusterPoolIPv4PodCIDRList: "10.42.0.0/16"  # K3s default pod CIDR
+
+# -- Operator: manages IPAM, CIDR allocation, etc.
+# Single replica is sufficient for a 2-node homelab
+operator:
+  replicas: 1
+
+# -- Disable external Envoy DaemonSet (crashes on ARM64 RPi due to tcmalloc 48-bit VA assumption)
+# When false, Envoy runs in embedded mode inside cilium-agent, which works on ARM64.
+# L7 proxy still functions via embedded mode.
+envoy:
+  enabled: false
+
+# -- Tunnel protocol for cross-node communication
+# VXLAN is simpler than Geneve and sufficient for a homelab
+tunnelProtocol: vxlan
+
+# -- Enable BPF-based masquerading for pod-to-external traffic
+# REQUIRED when kubeProxyReplacement: true: without this, pod IPs (10.42.x.x)
+# are NOT translated to the node IP when leaving the cluster.
+enableBpfMasquerade: true
+
+# -- Use legacy Linux routing for host traffic (not BPF host routing)
+# Prevents host SSH/API from being intercepted by BPF during agent restart.
+# Pod-to-pod, services, network policies, and Hubble still use full BPF.
+enableHostLegacyRouting: true
+
+# -- BPF load balancer settings
+bpf:
+  # Allow ClusterIP services to have external backends (e.g. API server on host)
+  lbExternalClusterIP: true
+  # Disable localhost BPF: causes agent crash on ARM64 during restart
+  lbLocalhost: false

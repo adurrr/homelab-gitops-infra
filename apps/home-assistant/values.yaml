@@ -1,0 +1,65 @@
+# =============================================================================
+# Home Assistant: Helm values for K3s homelab
+# =============================================================================
+# This chart deploys Home Assistant as a StatefulSet with PVC-backed
+# configuration storage and Traefik ingress.
+# =============================================================================
+
+image:
+  repository: ghcr.io/home-assistant/home-assistant
+  tag: stable
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# Strategy must be Recreate: StatefulSet with PVC cannot rolling-update
+strategy:
+  type: Recreate
+
+persistence:
+  enabled: true
+  storageClass: local-path
+  size: 10Gi
+  accessMode: ReadWriteOnce
+
+service:
+  type: ClusterIP
+  port: 8123
+
+ingress:
+  enabled: true
+  className: traefik
+  host: ha.homelab.local
+  tlsSecret: ha-tls
+
+config:
+  name: Home
+  latitude: 40.4168
+  longitude: -3.7038
+  elevation: 657
+  unitSystem: metric
+  timezone: Europe/Madrid
+  trustedProxies:
+    - 10.42.0.0/16     # K3s pod CIDR
+    - <LAN_SUBNET>   # Local network
+
+  # internalUrl: uncomment and set for Traefik externals
+  # internalUrl: https://ha.homelab.local
+
+# USB device passthrough: uncomment for Zigbee/Z-Wave dongles
+# usbDevices:
+#   - name: zigbee
+#     hostPath: /dev/serial/by-id/usb-Silicon_Labs_Sonoff_Zigbee_Dongle_Plus-if00
+#     containerPath: /dev/ttyACM0
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+serviceMonitor:
+  enabled: true
+  interval: 30s

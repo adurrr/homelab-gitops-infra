@@ -1,0 +1,91 @@
+---
+# =============================================================================
+# Role: bootstrap-node
+# =============================================================================
+# Configures kernel modules, sysctl parameters, and OS prerequisites
+# for K3s and Cilium on aarch64 and x86_64 nodes.
+# =============================================================================
+
+- name: Update package cache (Debian/Ubuntu)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_os_family == "Debian"
+  changed_when: false
+
+- name: Install required system packages
+  ansible.builtin.package:
+    name:
+      - curl
+      - wget
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - conntrack
+      - socat
+      - ipvsadm
+      - apparmor
+      - apparmor-utils
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install required system packages (Red Hat)
+  ansible.builtin.package:
+    name:
+      - curl
+      - wget
+      - conntrack-tools
+      - socat
+      - ipvsadm
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Load required kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ required_kernel_modules }}"
+
+- name: Persist kernel modules
+  ansible.builtin.copy:
+    content: "{{ item }}"
+    dest: "/etc/modules-load.d/{{ item }}.conf"
+    mode: "0644"
+  loop: "{{ required_kernel_modules }}"
+  when: kernel_modules_persist
+
+- name: Configure sysctl parameters
+  ansible.posix.sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ required_sysctl }}"
+
+- name: Disable swap (required by Kubernetes)
+  ansible.builtin.command: swapoff -a
+  changed_when: ansible_swaptotal_mb > 0
+
+- name: Remove swap from fstab
+  ansible.posix.mount:
+    name: swap
+    fstype: swap
+    state: absent
+
+- name: Create tools checksum directory
+  ansible.builtin.file:
+    path: "{{ tools_checksum_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Display architecture info
+  ansible.builtin.debug:
+    msg: |
+      Node: {{ inventory_hostname }}
+      Architecture: {{ ansible_architecture }} (mapped to: {{ architecture_map[ansible_architecture] }})
+      OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+      Kernel: {{ ansible_kernel }}
+      Memory: {{ ansible_memtotal_mb }} MB
+      CPUs: {{ ansible_processor_vcpus }}

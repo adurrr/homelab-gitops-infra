@@ -1,0 +1,379 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Prometheus Stack Application
+# =============================================================================
+# Deploys kube-prometheus-stack (Prometheus, Grafana, Alertmanager).
+# Managed by the "observability" AppProject.
+#
+# ArgoCD sync fixes applied:
+# - ServerSideApply=true: Required for large CRDs managed by Prometheus Operator
+# - RespectIgnoreDifferences=true: Ensures ignoreDifferences entries are honored
+# - ApplyOutOfSyncOnly=true: Reduces sync conflicts by only applying drifted resources
+# - Comprehensive ignoreDifferences covering all known drift points (see docs below)
+# - searchNamespace: ALL for Grafana sidecar to find dashboards/datasources
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  destination:
+    namespace: monitoring
+    server: https://kubernetes.default.svc
+  project: observability
+  source:
+    chart: kube-prometheus-stack
+    repoURL: https://prometheus-community.github.io/helm-charts
+    targetRevision: 85.2.2
+    helm:
+      values: |
+        prometheus:
+          prometheusSpec:
+            retention: 15d
+            scrapeInterval: 30s
+            resources:
+              requests:
+                cpu: 100m
+                memory: 256Mi
+              limits:
+                cpu: 500m
+                memory: 1Gi
+            additionalScrapeConfigs:
+              - job_name: 'cilium-agent'
+                kubernetes_sd_configs:
+                  - role: pod
+                    namespaces:
+                      names:
+                        - kube-system
+                relabel_configs:
+                  - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+                    action: keep
+                    regex: cilium
+                  - source_labels: [__meta_kubernetes_pod_container_port_name]
+                    action: keep
+                    regex: metrics
+                  - action: labelmap
+                    regex: __meta_kubernetes_pod_label_(.+)
+                  - source_labels: [__meta_kubernetes_namespace]
+                    action: replace
+                    target_label: namespace
+                  - source_labels: [__meta_kubernetes_pod_name]
+                    action: replace
+                    target_label: pod
+              - job_name: 'cilium-operator'
+                kubernetes_sd_configs:
+                  - role: pod
+                    namespaces:
+                      names:
+                        - kube-system
+                relabel_configs:
+                  - source_labels: [__meta_kubernetes_pod_label_io_cilium_app]
+                    action: keep
+                    regex: operator
+                  - source_labels: [__meta_kubernetes_pod_container_port_name]
+                    action: keep
+                    regex: metrics
+                  - action: labelmap
+                    regex: __meta_kubernetes_pod_label_(.+)
+                  - source_labels: [__meta_kubernetes_namespace]
+                    action: replace
+                    target_label: namespace
+                  - source_labels: [__meta_kubernetes_pod_name]
+                    action: replace
+                    target_label: pod
+              - job_name: 'hubble-relay'
+                kubernetes_sd_configs:
+                  - role: pod
+                    namespaces:
+                      names:
+                        - kube-system
+                relabel_configs:
+                  - source_labels: [__meta_kubernetes_pod_label_k8s_app]
+                    action: keep
+                    regex: hubble-relay
+                  - source_labels: [__meta_kubernetes_pod_container_port_name]
+                    action: keep
+                    regex: metrics
+                  - action: labelmap
+                    regex: __meta_kubernetes_pod_label_(.+)
+                  - source_labels: [__meta_kubernetes_namespace]
+                    action: replace
+                    target_label: namespace
+                  - source_labels: [__meta_kubernetes_pod_name]
+                    action: replace
+                    target_label: pod
+        grafana:
+          # Leave empty to auto-generate password (stored in Secret: prometheus-grafana)
+          # Or set via SealedSecret in security/secrets/ (Phase 5)
+          adminPassword: ""
+          persistence:
+            enabled: true
+            size: 10Gi
+          sidecar:
+            dashboards:
+              enabled: true
+              searchNamespace: ALL
+            datasources:
+              enabled: true
+              searchNamespace: ALL
+          ingress:
+            enabled: true
+            ingressClassName: traefik
+            hosts:
+              - grafana.homelab.local
+            annotations:
+              traefik.ingress.kubernetes.io/router.entrypoints: websecure
+            tls:
+              - hosts:
+                  - grafana.homelab.local
+                secretName: grafana-tls
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+        alertmanager:
+          enabled: true
+          alertmanagerSpec:
+            resources:
+              requests:
+                cpu: 50m
+                memory: 64Mi
+        prometheusOperator:
+          admissionWebhooks:
+            enabled: false
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+        kubeApiServer:
+          enabled: false
+        kubelet:
+          enabled: true
+        kubeControllerManager:
+          enabled: false
+        coreDns:
+          enabled: true
+        kubeDns:
+          enabled: false
+        kubeEtcd:
+          enabled: false
+        kubeScheduler:
+          enabled: false
+        kubeProxy:
+          enabled: false
+        kubeStateMetrics:
+          enabled: true
+        nodeExporter:
+          enabled: true
+        prometheus-node-exporter:
+          hostNetwork: false
+  ignoreDifferences:
+    # === CRDs ===
+    # CRDs are modified by the Prometheus Operator after creation.
+    # ArgoCD cannot consider CRD default values during diff calculation.
+    # Reference: https://github.com/argoproj/argo-cd/issues/11074
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      jsonPointers:
+        - /spec
+
+    # === Admission Webhook Jobs ===
+    # These Jobs run once during install/upgrade and then complete.
+    # ArgoCD sees the completed state as drift.
+    - group: batch
+      kind: Job
+      name: prometheus-kube-prometheus-admission-create
+      jsonPointers:
+        - /
+    - group: batch
+      kind: Job
+      name: prometheus-kube-prometheus-admission-patch
+      jsonPointers:
+        - /
+
+    # === Webhook Configurations ===
+    # caBundle is populated by Kubernetes after creation (cert-manager or K8s itself).
+    # Reference: https://github.com/prometheus-community/helm-charts/issues/4914
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+
+    # === ClusterRole ===
+    # The kube-prometheus-stack chart conditionally adds discovery.k8s.io rules
+    # based on cluster capabilities. ArgoCD's Helm rendering may differ from
+    # what the cluster reports.
+    # Reference: https://github.com/argoproj/argo-cd/issues/20537
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: prometheus-kube-prometheus-operator
+      jqPathExpressions:
+        - '.rules[] | select (.apiGroups == ["discovery.k8s.io"])'
+
+    # === Prometheus Operator Deployment ===
+    # Resources field may drift due to K8s adding default values.
+    - group: apps
+      kind: Deployment
+      name: prometheus-kube-prometheus-operator
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+
+    # === Grafana Deployment ===
+    # Resources field drift on K8s 1.32+ due to default resource injection.
+    # Reference: https://github.com/prometheus-community/helm-charts/issues/4914
+    - group: apps
+      kind: Deployment
+      name: prometheus-grafana
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+        - '.spec.template.spec.initContainers[]?.resources'
+
+    # === kube-state-metrics Deployment ===
+    # Same resources drift issue.
+    - group: apps
+      kind: Deployment
+      name: prometheus-kube-state-metrics
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+
+    # === node-exporter DaemonSet ===
+    # Same resources drift issue.
+    - group: apps
+      kind: DaemonSet
+      name: prometheus-prometheus-node-exporter
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+
+    # === Alertmanager StatefulSet ===
+    # volumeClaimTemplates apiVersion/kind added by SSA conversion.
+    # Reference: https://github.com/argoproj/argo-cd/issues/11143
+    - group: apps
+      kind: StatefulSet
+      name: alertmanager-prometheus-kube-prometheus-alertmanager
+      jqPathExpressions:
+        - '.spec.volumeClaimTemplates[0].apiVersion'
+        - '.spec.volumeClaimTemplates[0].kind'
+
+    # === Prometheus StatefulSet ===
+    # Same volumeClaimTemplates SSA issue.
+    - group: apps
+      kind: StatefulSet
+      name: prometheus-prometheus-kube-prometheus-prometheus
+      jqPathExpressions:
+        - '.spec.volumeClaimTemplates[0].apiVersion'
+        - '.spec.volumeClaimTemplates[0].kind'
+
+    # === Grafana StatefulSet (if persistence enabled) ===
+    # Same volumeClaimTemplates SSA issue.
+    - group: apps
+      kind: StatefulSet
+      name: prometheus-grafana
+      jqPathExpressions:
+        - '.spec.volumeClaimTemplates[0].apiVersion'
+        - '.spec.volumeClaimTemplates[0].kind'
+
+    # === Prometheus CRD Resources ===
+    # CRD default values cause false-positive diffs for Prometheus/ServiceMonitor.
+    # Reference: https://github.com/prometheus-community/helm-charts/issues/4914
+    - group: monitoring.coreos.com
+      kind: Prometheus
+      jqPathExpressions:
+        - '.spec.remoteWrite[]?.writeRelabelConfigs[]?.action'
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+      jqPathExpressions:
+        - '.spec.endpoints[]?.relabelings[]?.action'
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+      jsonPointers:
+        - /spec
+
+    # === PodMonitor ===
+    - group: monitoring.coreos.com
+      kind: PodMonitor
+      jsonPointers:
+        - /spec
+
+    # === PrometheusRule ===
+    # Rules may be modified by the operator at runtime.
+    - group: monitoring.coreos.com
+      kind: PrometheusRule
+      jsonPointers:
+        - /spec
+
+    # === Secrets ===
+    # These secrets are managed by Helm/operator and may drift.
+    - group: ""
+      kind: Secret
+      name: prometheus-grafana
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: Secret
+      name: prometheus-kube-prometheus-alertmanager
+      jsonPointers:
+        - /data
+
+    # === ConfigMaps ===
+    # Grafana and dashboard ConfigMaps contain large multi-line data
+    # (INI configs, dashboard JSONs, datasource YAML). Helm renders these
+    # as quoted strings with embedded \n, but Kubernetes stores them as
+    # YAML block scalars (|). ArgoCD's diff engine treats the entire
+    # resource as different despite identical string values.
+    # Reference: https://github.com/argoproj/argo-cd/issues/11074
+    - group: ""
+      kind: ConfigMap
+      name: prometheus-grafana
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: prometheus-grafana-config-dashboards
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: prometheus-kube-prometheus-alertmanager-overview
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: prometheus-kube-prometheus-cluster-total
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: prometheus-kube-prometheus-grafana-datasource
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: prometheus-kube-prometheus-grafana-overview
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: prometheus-kube-prometheus-k8s-coredns
+      jsonPointers:
+        - /data
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true

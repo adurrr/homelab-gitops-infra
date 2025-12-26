@@ -1,0 +1,3 @@
+---
+# install-helm defaults
+helm_install_dir: "{{ tools_install_dir }}"

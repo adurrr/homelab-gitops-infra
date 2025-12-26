@@ -1,0 +1,52 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Observability AppProject
+# =============================================================================
+# Security boundary for the observability stack (Prometheus, Grafana, Loki, OTel).
+# Applied as a static resource (NOT in the GitOps sync path: AppProjects have
+# no health probe and cause the sync to wait forever).
+#
+# Apply once during bootstrap:
+#   kubectl apply -f observability/appproject.yaml
+#
+# Cluster-scoped resources whitelisted here because kube-prometheus-stack deploys:
+#   - CustomResourceDefinitions (prometheuses, servicemonitors, etc.)
+#   - ClusterRoles + ClusterRoleBindings (for cross-namespace scraping)
+#   - Admission webhooks (MutatingWebhookConfiguration, ValidatingWebhookConfiguration)
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: observability
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+spec:
+  description: Observability stack - Prometheus, Grafana, Loki, OTel
+  sourceRepos:
+    - https://github.com/<GITHUB_USER>/<REPO_NAME>
+    - https://prometheus-community.github.io/helm-charts
+    - https://grafana.github.io/helm-charts
+    - https://grafana-community.github.io/helm-charts
+    - https://open-telemetry.github.io/opentelemetry-helm-charts
+  destinations:
+    - namespace: monitoring
+      server: https://kubernetes.default.svc
+    - namespace: kube-system
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: 'apiextensions.k8s.io'
+      kind: CustomResourceDefinition
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRole
+    - group: 'rbac.authorization.k8s.io'
+      kind: ClusterRoleBinding
+    - group: 'admissionregistration.k8s.io'
+      kind: ValidatingWebhookConfiguration
+    - group: 'admissionregistration.k8s.io'
+      kind: MutatingWebhookConfiguration
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

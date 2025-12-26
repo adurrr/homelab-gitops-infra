@@ -1,0 +1,49 @@
+# =============================================================================
+# Allow: Home Assistant Namespace
+# =============================================================================
+# Allows ingress from: Traefik (UI), monitoring (Prometheus scrapes)
+# =============================================================================
+
+---
+# Allow Traefik ingress to Home Assistant
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ha-from-traefik
+  namespace: home-assistant
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: home-assistant
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - protocol: TCP
+          port: 8123
+
+---
+# Allow monitoring to scrape Home Assistant metrics
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ha-from-monitoring
+  namespace: home-assistant
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: home-assistant
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8123

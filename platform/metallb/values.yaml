@@ -1,0 +1,27 @@
+# =============================================================================
+# MetalLB: Helm Values for Homelab
+# =============================================================================
+# L2 mode: appropriate for homelab (no BGP needed)
+# Reference: https://metallb.universe.tf/installation/
+
+# Resource sizing for homelab
+controller:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+speaker:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+frr:
+  enabled: false  # L2 mode, no BGP

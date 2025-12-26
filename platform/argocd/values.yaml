@@ -1,0 +1,76 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: ArgoCD Values
+# =============================================================================
+# Production values for the argo-cd Helm chart on the homelab 2-node cluster.
+# Reference: https://github.com/argoproj/argo-helm/tree/main/charts/argo-cd
+# =============================================================================
+
+configs:
+  params:
+    server.insecure: true  # TLS terminated at Traefik
+  rbac:
+    policy.csv: |
+      g, admin, role:admin
+    policy.default: role:readonly
+  repositories:
+    homelab-gitops-infra:
+      url: https://github.com/<GITHUB_USER>/<REPO_NAME>
+      type: git
+
+server:
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    hosts:
+      - argocd.homelab.local
+    tls:
+      - hosts:
+          - argocd.homelab.local
+        secretName: argocd-tls
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Resource sizing for homelab (2-node cluster)
+controller:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+applicationSet:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+dex:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+redis:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# Disable redis-secret-init Job: known to fail on some clusters (RBAC/timing).
+# ArgoCD generates the Redis secret automatically without it.
+redisSecretInit:
+  enabled: false

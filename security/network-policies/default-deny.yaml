@@ -1,0 +1,42 @@
+# =============================================================================
+# Default-Deny Network Policies
+# =============================================================================
+# Applied to all application namespaces. Blocks all ingress traffic that
+# doesn't match an explicit allow rule.
+# =============================================================================
+
+---
+# monitoring: blocks all ingress unless explicitly allowed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# home-assistant: blocks all ingress unless explicitly allowed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: home-assistant
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+
+---
+# argocd: blocks all ingress unless explicitly allowed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: argocd
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress

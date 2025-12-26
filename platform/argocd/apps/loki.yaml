@@ -1,0 +1,152 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Loki Application
+# =============================================================================
+# Deploys Loki log aggregation system in monolithic mode.
+# Managed by the "observability" AppProject.
+#
+# ArgoCD sync fixes applied:
+# - ignoreDifferences: Covers StatefulSet volumeClaimTemplates (SSA issue),
+#   runtime-modified ConfigMaps and Secrets
+# - ServerSideApply=true: Required for CRDs and large resources
+# - RespectIgnoreDifferences=true: Ensures ignoreDifferences entries are honored
+# - ApplyOutOfSyncOnly=true: Reduces sync conflicts
+#
+# Chart 17.0.1 fixes:
+# - Added required schemaConfig section (v13/tsdb)
+# - Fixed resources path (top-level, not under monolithic:)
+# - Removed deprecated storage_config section
+# - Added commonConfig.replication_factor for monolithic mode
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: loki
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  destination:
+    namespace: monitoring
+    server: https://kubernetes.default.svc
+  project: observability
+  source:
+    chart: loki
+    repoURL: https://grafana-community.github.io/helm-charts
+    targetRevision: 17.0.1
+    helm:
+      values: |
+        # SingleBinary mode: single replica with filesystem storage
+        # Use "Monolithic" only for multi-replica with object storage
+        deploymentMode: SingleBinary
+
+        loki:
+          auth_enabled: false
+          storage:
+            type: filesystem
+          limits_config:
+            allow_structured_metadata: true
+            retention_period: 672h  # 28 days
+          schemaConfig:
+            configs:
+              - from: "2024-01-01"
+                store: tsdb
+                object_store: filesystem
+                schema: v13
+                index:
+                  prefix: loki_index_
+                  period: 24h
+          commonConfig:
+            replication_factor: 1
+          compactor:
+            working_directory: /var/loki/compactor
+
+        singleBinary:
+          replicas: 1
+          persistence:
+            enabled: true
+            size: 50Gi
+            storageClassName: local-path
+
+        # Explicitly disable other deployment modes to pass chart validation
+        read:
+          replicas: 0
+        write:
+          replicas: 0
+        backend:
+          replicas: 0
+
+        # Resources at top level for chart 17.x
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi
+
+        # Disable MinIO for homelab (use filesystem storage)
+        minio:
+          enabled: false
+
+        # Disable gateway for SingleBinary mode
+        gateway:
+          enabled: false
+
+        # Disable sidecar for SingleBinary mode
+        sidecar:
+          rules:
+            enabled: false
+
+        # Reduce chunks cache for homelab (default is 9830Mi)
+        chunksCache:
+          allocatedMemory: 128
+
+        # Reduce results cache for homelab (default is very large)
+        resultsCache:
+          allocatedMemory: 64
+
+  ignoreDifferences:
+    # === StatefulSet volumeClaimTemplates ===
+    # ServerSideApply causes the API server to add apiVersion/kind to
+    # volumeClaimTemplates during conversion. This is a known ArgoCD issue.
+    # Reference: https://github.com/argoproj/argo-cd/issues/11143
+    - group: apps
+      kind: StatefulSet
+      name: loki
+      jqPathExpressions:
+        - '.spec.volumeClaimTemplates[0].apiVersion'
+        - '.spec.volumeClaimTemplates[0].kind'
+
+    # === ConfigMaps ===
+    # ConfigMaps may be modified at runtime by Loki or other controllers.
+    - group: ""
+      kind: ConfigMap
+      name: loki
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: loki-canary
+      jsonPointers:
+        - /data
+
+    # === Secrets ===
+    # Secrets may be modified by the chart or operator.
+    - group: ""
+      kind: Secret
+      name: loki
+      jsonPointers:
+        - /data
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true

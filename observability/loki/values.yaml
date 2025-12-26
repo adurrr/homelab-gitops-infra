@@ -1,0 +1,64 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Loki Values
+# =============================================================================
+# Monolithic mode Loki for log aggregation on the 2-node homelab cluster.
+# Reference: https://github.com/grafana/loki/tree/main/production/helm/loki
+# Chart version: 17.0.1 (app 3.7.2)
+#
+# NOTE: These values are for reference/local testing only.
+# The actual deployment values are in platform/argocd/apps/loki.yaml
+# =============================================================================
+
+# SingleBinary mode: single replica with filesystem storage
+# Use "Monolithic" only for multi-replica with object storage
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  storage:
+    type: filesystem
+  limits_config:
+    allow_structured_metadata: true
+    retention_period: 672h  # 28 days
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  commonConfig:
+    replication_factor: 1
+  compactor:
+    working_directory: /var/loki/compactor
+
+monolithic:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 50Gi
+    storageClassName: local-path
+
+# Resources at top level for chart 17.x
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+# Disable MinIO for homelab (use filesystem storage)
+minio:
+  enabled: false
+
+# Disable gateway for monolithic mode
+gateway:
+  enabled: false
+
+# Disable sidecar for monolithic mode
+sidecar:
+  rules:
+    enabled: false

@@ -1,0 +1,58 @@
+# =============================================================================
+# Traefik: Helm Values for Homelab
+# =============================================================================
+# Replaces K3s built-in Traefik (disabled via --disable traefik).
+# Managed via ArgoCD for version control and GitOps.
+# Reference: https://github.com/traefik/traefik-helm-chart
+
+# Enable ingressClass for ArgoCD ingress resources
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+
+# Resource sizing for homelab
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+# Ports configuration
+ports:
+  web:
+    expose: true
+    exposedPort: 80
+    port: 8000
+    protocol: TCP
+  websecure:
+    expose: true
+    exposedPort: 443
+    port: 8443
+    protocol: TCP
+    tls:
+      enabled: true
+
+# Disable Dashboard for production
+ingressRoute:
+  dashboard:
+    enabled: false
+
+# Logs
+logs:
+  general:
+    level: INFO
+  access:
+    enabled: true
+
+# Prometheus metrics
+metrics:
+  prometheus:
+    enabled: true
+    entryPoint: metrics
+
+# Additional arguments
+additionalArguments:
+  - "--providers.kubernetesingress"
+  - "--entrypoints.metrics.address=:9100/tcp"

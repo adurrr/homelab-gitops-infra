@@ -1,0 +1,3 @@
+---
+# bootstrap-node defaults
+kernel_modules_persist: true

@@ -1,0 +1,212 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: OpenTelemetry Collector Application
+# =============================================================================
+# Deploys OpenTelemetry Collector for metrics, logs, and traces.
+# Managed by the "observability" AppProject.
+#
+# ArgoCD sync fixes:
+# - Consolidated all config into helm.values (removed helm.parameters)
+# - Added health_check extension for readiness/liveness probes
+# - ignoreDifferences: Covers ConfigMap generated from config:
+# - ServerSideApply=true: Required for RBAC resources
+# - RespectIgnoreDifferences=true: Ensures ignoreDifferences entries are honored
+#
+# RBAC fixes:
+# - Added endpoints, services, nodes permissions for k8sattributes processor
+# - Added events permission for log correlation
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  destination:
+    namespace: monitoring
+    server: https://kubernetes.default.svc
+  project: observability
+  source:
+    chart: opentelemetry-collector
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    targetRevision: 0.156.2
+    helm:
+      values: |
+        # Use contrib image for additional receivers/exporters/processors
+        image:
+          repository: otel/opentelemetry-collector-contrib
+
+        # Single instance for homelab
+        mode: deployment
+
+        # Full collector configuration
+        config:
+          receivers:
+            otlp:
+              protocols:
+                grpc:
+                  endpoint: 0.0.0.0:4317
+                http:
+                  endpoint: 0.0.0.0:4318
+
+          processors:
+            batch:
+              timeout: 10s
+              send_batch_size: 1024
+            memory_limiter:
+              check_interval: 5s
+              limit_percentage: 80
+              spike_limit_percentage: 25
+            k8sattributes:
+              auth_type: serviceAccount
+              passthrough: false
+              extract:
+                metadata:
+                  - k8s.pod.name
+                  - k8s.namespace.name
+                  - k8s.node.name
+                  - k8s.deployment.name
+                  - k8s.cluster.uid
+              pod_association:
+                - sources:
+                    - from: resource_attribute
+                      name: k8s.pod.ip
+                - sources:
+                    - from: resource_attribute
+                      name: k8s.pod.uid
+                - sources:
+                    - from: connection
+
+          exporters:
+            # Metrics → Prometheus remote write
+            prometheusremotewrite:
+              endpoint: http://prometheus-operated.monitoring.svc.cluster.local:9090/api/v1/write
+              resource_to_telemetry_conversion:
+                enabled: true
+            # Logs → Loki via OTLP
+            otlphttp/loki:
+              endpoint: http://loki.monitoring.svc.cluster.local:3100/otlp
+              tls:
+                insecure: true
+
+          extensions:
+            # Health check endpoint for readiness/liveness probes
+            health_check:
+              endpoint: 0.0.0.0:13133
+            # Pprof endpoint for debugging
+            pprof:
+              endpoint: 0.0.0.0:1777
+
+          service:
+            extensions:
+              - health_check
+              - pprof
+            pipelines:
+              metrics:
+                receivers: [otlp]
+                processors: [memory_limiter, k8sattributes, batch]
+                exporters: [prometheusremotewrite]
+              logs:
+                receivers: [otlp]
+                processors: [memory_limiter, k8sattributes, batch]
+                exporters: [otlphttp/loki]
+              traces:
+                receivers: [otlp]
+                processors: [memory_limiter, k8sattributes, batch]
+                exporters: [otlphttp/loki]
+
+        # Resource sizing for homelab
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+        # Service account for K8s API access
+        serviceAccount:
+          create: true
+
+        # ClusterRole for k8sattributes processor
+        clusterRole:
+          create: true
+          rules:
+            - apiGroups: [""]
+              resources: ["pods", "namespaces", "nodes"]
+              verbs: ["get", "watch", "list"]
+            - apiGroups: [""]
+              resources: ["services", "endpoints"]
+              verbs: ["get", "watch", "list"]
+            - apiGroups: ["apps"]
+              resources: ["replicasets"]
+              verbs: ["get", "watch", "list"]
+            - apiGroups: [""]
+              resources: ["events"]
+              verbs: ["list", "watch"]
+
+        # Enable health check port
+        ports:
+          healthcheck:
+            enabled: true
+            containerPort: 13133
+            servicePort: 13133
+            protocol: TCP
+          pprof:
+            enabled: true
+            containerPort: 1777
+            servicePort: 1777
+            protocol: TCP
+
+        # Liveness and readiness probes using health_check extension
+        livenessProbe:
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          httpGet:
+            port: 13133
+            path: /
+
+        readinessProbe:
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          httpGet:
+            port: 13133
+            path: /
+
+  ignoreDifferences:
+    # ConfigMap generated from config: may be modified at runtime
+    - group: ""
+      kind: ConfigMap
+      name: otel-collector-opentelemetry-collector
+      jsonPointers:
+        - /data
+    # ClusterRole may be modified by the operator
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+      name: otel-collector-opentelemetry-collector
+      jsonPointers:
+        - /rules
+    # ClusterRoleBinding may drift
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+      name: otel-collector-opentelemetry-collector
+      jsonPointers:
+        - /subjects
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true

@@ -1,0 +1,31 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: MetalLB Configuration Application
+# =============================================================================
+# IP Pool and L2 Advertisement: applied AFTER MetalLB CRDs are installed.
+# Managed by the "platform" AppProject.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metallb-config
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  destination:
+    namespace: metallb-system
+    server: https://kubernetes.default.svc
+  project: platform
+  source:
+    path: platform/metallb/config
+    repoURL: https://github.com/adurrr/homelab-gitops-infra
+    targetRevision: HEAD
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

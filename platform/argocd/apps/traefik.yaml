@@ -1,0 +1,61 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Traefik Application
+# =============================================================================
+# Deploys Traefik ingress controller (replaces K3s built-in).
+# Managed by the "platform" AppProject.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  destination:
+    namespace: traefik
+    server: https://kubernetes.default.svc
+  project: platform
+  source:
+    chart: traefik
+    repoURL: https://traefik.github.io/charts
+    targetRevision: 32.1.0
+    helm:
+      parameters:
+        - name: "ingressClass.enabled"
+          value: "true"
+        - name: "ingressClass.isDefaultClass"
+          value: "true"
+        - name: "resources.requests.cpu"
+          value: "100m"
+        - name: "resources.requests.memory"
+          value: "192Mi"
+        - name: "resources.limits.cpu"
+          value: "200m"
+        - name: "resources.limits.memory"
+          value: "384Mi"
+        - name: "ports.web.expose.default"
+          value: "true"
+        - name: "ports.websecure.expose.default"
+          value: "true"
+        - name: "ports.websecure.tls.enabled"
+          value: "true"
+        - name: "ingressRoute.dashboard.enabled"
+          value: "false"
+        - name: "logs.general.level"
+          value: "INFO"
+        - name: "logs.access.enabled"
+          value: "true"
+        - name: "metrics.prometheus.enabled"
+          value: "true"
+        - name: "providers.kubernetesIngress.publishedService.enabled"
+          value: "true"
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

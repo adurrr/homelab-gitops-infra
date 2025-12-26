@@ -1,0 +1,46 @@
+# =============================================================================
+# K3s Server Configuration File
+# =============================================================================
+# This file documents the K3s server configuration used in Phase 1.
+# The actual installation uses CLI flags (see server-install.sh) rather than
+# this config file, but it's kept here for reference and future customization.
+#
+# To use this file instead of CLI flags:
+#   curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC='server' K3S_CONFIG_FILE=infra/k3s/config.yaml sh -
+#
+# Reference: https://docs.k3s.io/installation/configuration
+# =============================================================================
+
+# Disable flannel: Cilium replaces it as CNI
+flannel-backend: none
+
+# Disable K3s network policy controller: Cilium provides its own
+disable-network-policy: true
+
+# Disable Traefik: we'll manage ingress via ArgoCD
+# Disable kube-proxy: Cilium replaces it with eBPF
+# Disable metrics-server: managed via ArgoCD in Phase 2
+disable:
+  - traefik
+  - kube-proxy
+  - metrics-server
+
+# Cluster token (set via K3S_TOKEN env var or here)
+# token: <from infra/.env K3S_TOKEN>
+
+# TLS SAN: add the server's real IP so remote kubectl works
+# IMPORTANT: Replace with your actual K3S_SERVER_IP from infra/.env
+tls-san:
+  - CHANGE_ME_YOUR_K3S_SERVER_IP
+
+# Allow copying kubeconfig
+write-kubeconfig-mode: "0644"
+
+# Pod CIDR (K3s default: must match Cilium values)
+cluster-cidr: 10.42.0.0/16
+
+# Service CIDR (K3s default)
+service-cidr: 10.43.0.0/16
+
+# Cluster DNS
+cluster-dns: 10.43.0.10

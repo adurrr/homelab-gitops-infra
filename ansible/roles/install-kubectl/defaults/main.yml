@@ -1,0 +1,3 @@
+---
+# install-kubectl defaults
+kubectl_install_dir: "{{ tools_install_dir }}"

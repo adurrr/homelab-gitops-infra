@@ -1,0 +1,46 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: MetalLB Application
+# =============================================================================
+# Deploys MetalLB LoadBalancer for bare-metal Kubernetes.
+# Managed by the "platform" AppProject.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: metallb
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  destination:
+    namespace: metallb-system
+    server: https://kubernetes.default.svc
+  project: platform
+  source:
+    chart: metallb
+    repoURL: https://metallb.github.io/metallb
+    targetRevision: 0.14.8
+    helm:
+      parameters:
+        - name: "controller.resources.requests.cpu"
+          value: "50m"
+        - name: "controller.resources.requests.memory"
+          value: "64Mi"
+        - name: "speaker.resources.requests.cpu"
+          value: "50m"
+        - name: "speaker.resources.requests.memory"
+          value: "64Mi"
+  ignoreDifferences:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      jsonPointers:
+        - /spec
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

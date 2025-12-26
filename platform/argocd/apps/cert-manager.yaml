@@ -1,0 +1,51 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: cert-manager Application
+# =============================================================================
+# Deploys cert-manager for TLS certificate automation.
+# Managed by the "platform" AppProject.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  destination:
+    namespace: cert-manager
+    server: https://kubernetes.default.svc
+  project: platform
+  source:
+    chart: cert-manager
+    repoURL: https://charts.jetstack.io
+    targetRevision: v1.15.3
+    helm:
+      parameters:
+        - name: "installCRDs"
+          value: "true"
+        - name: "resources.requests.cpu"
+          value: "50m"
+        - name: "resources.requests.memory"
+          value: "64Mi"
+        - name: "webhook.resources.requests.cpu"
+          value: "50m"
+        - name: "webhook.resources.requests.memory"
+          value: "64Mi"
+        - name: "cainjector.resources.requests.cpu"
+          value: "50m"
+        - name: "cainjector.resources.requests.memory"
+          value: "64Mi"
+        - name: "prometheus.enabled"
+          value: "true"
+        - name: "prometheus.servicemonitor.enabled"
+          value: "false"
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

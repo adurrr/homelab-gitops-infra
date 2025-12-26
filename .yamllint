@@ -1,0 +1,28 @@
+# yamllint configuration for Homelab GitOps Infrastructure
+# https://yamllint.readthedocs.io/
+
+extends: relaxed
+
+rules:
+  line-length:
+    max: 200
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  document-start: disable
+
+  comments:
+    min-spaces-from-content: 1
+
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false
+
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+
+ignore: |
+  infra/.env
+  apps/*/templates/
+  */templates/

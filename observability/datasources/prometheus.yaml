@@ -1,0 +1,26 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Grafana Prometheus Datasource
+# =============================================================================
+# Provisions Prometheus as the default Grafana datasource.
+# The Grafana sidecar auto-discovers ConfigMaps with label:
+#   grafana_datasource: "1"
+# in the monitoring namespace.
+# =============================================================================
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-datasource
+  namespace: monitoring
+  labels:
+    grafana_datasource: "1"
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-operated.monitoring.svc.cluster.local:9090
+        isDefault: true
+        editable: false

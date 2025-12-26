@@ -1,0 +1,35 @@
+# =============================================================================
+# ArgoCD RBAC Policy
+# =============================================================================
+# Applied via: kubectl apply -f security/rbac/argocd-rbac.yaml
+# Also configured in: platform/argocd/apps/argocd.yaml (configs.rbac section)
+# =============================================================================
+# Policy:
+#   g, admin, role:admin      : admin group gets full access
+#   policy.default: role:readonly: unauthenticated/default users are read-only
+#
+# Projects restrict which repos/namespaces each user group can access:
+#   - platform:    argocd, traefik, cert-manager, metallb-system
+#   - observability: monitoring, kube-system
+#   - applications: home-assistant, default
+# =============================================================================
+---
+# ArgoCD RBAC ConfigMap: applied by the ArgoCD Helm chart via configs.rbac
+# The values in platform/argocd/apps/argocd.yaml already set:
+#   configs.rbac.policy.csv: |
+#     g, admin, role:admin
+#   configs.rbac.policy.default: role:readonly
+#
+# This file serves as documentation and backup of the RBAC configuration.
+# =============================================================================
+
+# For reference: converting CSV policy to ArgoCD RBAC ConfigMap format
+# The chart renders these into the argocd-rbac-cm ConfigMap:
+#
+# policy.csv:
+#   g, admin, role:admin
+#   p, role:admin, *, *, *, allow
+#   p, role:readonly, *, *, get, allow
+#
+# policy.default: role:readonly
+# scopes: '[groups]'

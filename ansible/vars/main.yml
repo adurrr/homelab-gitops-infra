@@ -1,0 +1,54 @@
+---
+# =============================================================================
+# Global variables for Ansible playbooks
+# =============================================================================
+# Tool versions: update these when upgrading.
+# All tools support aarch64/arm64 and x86_64/amd64.
+# =============================================================================
+
+# Kubernetes tools
+kubectl_version: "1.36.0"
+helm_version: "4.1.4"
+
+# K3s version (used in Phase 1)
+k3s_version: "1.36.0+k3s1"
+
+# Cilium CNI version (used in Phase 1)
+# Installed via: cilium install --version <cilium_version>
+cilium_version: "1.19.3"
+
+# Architecture mapping: Ansible's ansible_architecture to Go's GOARCH
+# ansible_architecture values: aarch64, x86_64, arm64, amd64
+# GOARCH values: arm64, amd64
+architecture_map:
+  aarch64: arm64
+  arm64: arm64
+  x86_64: amd64
+  amd64: amd64
+
+# Download URLs: kubectl uses get_url; helm and cilium use unarchive with inline URLs
+kubectl_download_url: "https://dl.k8s.io/release/v{{ kubectl_version }}/bin/linux/{{ architecture_map[ansible_architecture] }}/kubectl"
+
+# Install paths
+tools_install_dir: /usr/local/bin
+tools_checksum_dir: /var/lib/homelab-tools
+
+# Kernel modules required by K3s and Cilium
+# overlay:  Container layer filesystem (K3s/containerd)
+# br_netfilter: Bridge netfilter for iptables on bridged traffic
+# vxlan:    Cilium VXLAN tunneling for cross-node pod communication
+required_kernel_modules:
+  - overlay
+  - br_netfilter
+  - vxlan
+
+# Sysctl parameters required by K3s and Cilium
+required_sysctl:
+  - name: net.bridge.bridge-nf-call-iptables
+    value: "1"
+  - name: net.bridge.bridge-nf-call-ip6tables
+    value: "1"
+  - name: net.ipv4.ip_forward
+    value: "1"
+  - name: net.ipv6.conf.all.forwarding
+    value: "1"

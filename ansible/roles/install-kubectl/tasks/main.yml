@@ -1,0 +1,49 @@
+---
+# =============================================================================
+# Role: install-kubectl
+# =============================================================================
+# Installs kubectl binary for the detected architecture (aarch64 or x86_64).
+# Idempotent: skips if the correct version is already installed.
+# =============================================================================
+
+- name: Check if kubectl is already installed
+  ansible.builtin.shell: command -v kubectl && kubectl version --client 2>/dev/null || echo "not-installed"
+  changed_when: false
+  register: kubectl_check
+
+- name: Set kubectl installed version
+  ansible.builtin.set_fact:
+    kubectl_installed_version: >-
+      {{ 'none' if kubectl_check.stdout == 'not-installed' else (kubectl_check.stdout | regex_search('v[0-9]+\\.[0-9]+\\.[0-9]+') | default('none')) }}
+
+- name: Determine if kubectl needs install or upgrade
+  ansible.builtin.set_fact:
+    kubectl_needs_install: >-
+      {{ kubectl_check.stdout == 'not-installed' or kubectl_installed_version != 'v' + kubectl_version }}
+
+- name: Display kubectl version status
+  ansible.builtin.debug:
+    msg: >-
+      kubectl installed: {{ kubectl_check.stdout | default('not installed') }},
+      target: v{{ kubectl_version }},
+      needs install: {{ kubectl_needs_install }}
+
+- name: Install kubectl
+  when: kubectl_needs_install | bool
+  block:
+    - name: Download kubectl binary
+      ansible.builtin.get_url:
+        url: "{{ kubectl_download_url }}"
+        dest: "{{ tools_install_dir }}/kubectl"
+        mode: "0755"
+        owner: root
+        group: root
+
+- name: Verify kubectl installation
+  ansible.builtin.command: kubectl version --client
+  changed_when: false
+  register: kubectl_verify
+
+- name: Display kubectl version
+  ansible.builtin.debug:
+    msg: "kubectl installed: {{ kubectl_verify.stdout }}"

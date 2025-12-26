@@ -1,0 +1,56 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Home Assistant Application
+# =============================================================================
+# Deploys Home Assistant as a StatefulSet with PVC-backed config storage
+# and Traefik ingress. Managed by the "applications" AppProject.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: home-assistant
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  destination:
+    namespace: home-assistant
+    server: https://kubernetes.default.svc
+  project: applications
+  source:
+    path: apps/home-assistant
+    repoURL: https://github.com/adurrr/homelab-gitops-infra
+    targetRevision: HEAD
+    helm:
+      valueFiles:
+        - values.yaml
+  ignoreDifferences:
+    # === StatefulSet volumeClaimTemplates ===
+    # ServerSideApply adds apiVersion/kind to volumeClaimTemplates.
+    # Reference: https://github.com/argoproj/argo-cd/issues/11143
+    - group: apps
+      kind: StatefulSet
+      name: home-assistant
+      jqPathExpressions:
+        - '.spec.volumeClaimTemplates[0].apiVersion'
+        - '.spec.volumeClaimTemplates[0].kind'
+
+    # === Home Assistant ConfigMap ===
+    # Users may modify config via HA UI or YAML editor.
+    - group: ""
+      kind: ConfigMap
+      name: home-assistant-config
+      jsonPointers:
+        - /data
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true

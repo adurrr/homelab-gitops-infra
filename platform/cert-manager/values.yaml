@@ -1,0 +1,40 @@
+# =============================================================================
+# cert-manager: Helm Values for Homelab
+# =============================================================================
+# Manages TLS certificates via Let's Encrypt or self-signed issuers.
+# Reference: https://cert-manager.io/docs/installation/helm/
+
+installCRDs: true  # Install CRDs directly via Helm
+
+# Resource sizing for homelab
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+cainjector:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+# Prometheus monitoring
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: true

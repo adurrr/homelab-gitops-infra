@@ -1,0 +1,199 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: ArgoCD Self-Managed Application
+# =============================================================================
+# ArgoCD manages its own installation via this Application manifest.
+# After bootstrap, ArgoCD upgrades and config changes flow through Git.
+#
+# ArgoCD sync fixes applied:
+# - Consolidated all config into helm.values (removed helm.parameters)
+#   Mixing values and parameters causes unpredictable rendering and drift
+# - RespectIgnoreDifferences=true to ensure ignoreDifferences are honored
+# - Comprehensive ignoreDifferences for Deployments, StatefulSets, Secrets
+# - ServerSideApply=true for large resources managed by ArgoCD itself
+#
+# NOTE: This app uses the "platform" project. The bootstrap file
+# (platform/argocd/bootstrap/argocd-app.yaml) is applied ONCE manually
+# to start the GitOps loop. After that, this app takes over ArgoCD itself.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"  # Sync before other platform apps
+spec:
+  destination:
+    namespace: argocd
+    server: https://kubernetes.default.svc
+  project: platform
+  source:
+    chart: argo-cd
+    repoURL: https://argoproj.github.io/argo-helm
+    targetRevision: 9.5.15
+    helm:
+      values: |
+        configs:
+          params:
+            server.insecure: true  # TLS terminated at Traefik
+          rbac:
+            policy.csv: |
+              g, admin, role:admin
+            policy.default: role:readonly
+          repositories:
+            homelab-gitops-infra:
+              url: https://github.com/<GITHUB_USER>/<REPO_NAME>
+              type: git
+        server:
+          ingress:
+            enabled: true
+            ingressClassName: traefik
+            hosts:
+              - argocd.homelab.local
+            annotations:
+              traefik.ingress.kubernetes.io/router.entrypoints: websecure
+            tls:
+              - hosts:
+                  - argocd.homelab.local
+                secretName: argocd-tls
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+        controller:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+        repoServer:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+        applicationSet:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+        dex:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+        redis:
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+        redisSecretInit:
+          enabled: false
+  ignoreDifferences:
+    # === Deployments ===
+    # Terminating replicas added during rolling updates
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /status/terminatingReplicas
+    # Resources drift on K8s 1.32+
+    - group: apps
+      kind: Deployment
+      name: argocd-server
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+    - group: apps
+      kind: Deployment
+      name: argocd-repo-server
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+    - group: apps
+      kind: Deployment
+      name: argocd-application-controller
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+    - group: apps
+      kind: Deployment
+      name: argocd-applicationset-controller
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+    - group: apps
+      kind: Deployment
+      name: argocd-dex-server
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+    - group: apps
+      kind: Deployment
+      name: argocd-redis
+      jqPathExpressions:
+        - '.spec.template.spec.containers[]?.resources'
+
+    # === StatefulSets ===
+    # Terminating replicas added during rolling updates
+    - group: apps
+      kind: StatefulSet
+      jsonPointers:
+        - /status/terminatingReplicas
+
+    # === Secrets ===
+    # ArgoCD manages its own secrets: they get modified at runtime
+    - group: ""
+      kind: Secret
+      name: argocd-secret
+      jsonPointers:
+        - /data
+
+    # === ConfigMaps ===
+    # ArgoCD configmap may be modified by the controller
+    - group: ""
+      kind: ConfigMap
+      name: argocd-cm
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: argocd-cmd-params-cm
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: argocd-rbac-cm
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: argocd-ssh-known-hosts-cm
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: ConfigMap
+      name: argocd-tls-certs-cm
+      jsonPointers:
+        - /data
+
+    # === Ingress ===
+    # Ingress host rendered by Helm may differ from values in some chart versions.
+    # Reference: https://github.com/argoproj/argo-cd/issues/14668
+    - group: networking.k8s.io
+      kind: Ingress
+      name: argocd-server
+      jsonPointers:
+        - /spec/rules/0/host
+        - /spec/tls/0/hosts/0
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+      - ApplyOutOfSyncOnly=true

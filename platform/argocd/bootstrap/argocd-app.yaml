@@ -1,0 +1,72 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Bootstrap Root Application (App-of-Apps)
+# =============================================================================
+# Apply ONCE during bootstrap:
+#   kubectl apply -f platform/argocd/bootstrap/argocd-app.yaml
+#
+# After this, ArgoCD manages all child applications from platform/argocd/apps/.
+# This file is NOT in the sync path: it bootstraps the GitOps loop.
+#
+# ArgoCD sync fixes applied:
+# - Comprehensive ignoreDifferences for child Application resources to prevent
+#   normalization drift (ArgoCD normalizes Application specs causing false diffs)
+# - RespectIgnoreDifferences=true to ensure ignores are honored
+# - ServerSideApply=true for large Application manifests
+#
+# Known issues addressed:
+# - App-of-Apps shows OutOfSync due to child apps being OutOfSync
+#   Reference: https://github.com/argoproj/argo-cd/issues/14668
+# - ArgoCD controller normalizes Application specs (helm: {}, retry blocks)
+#   Reference: https://github.com/argoproj/argo-cd/issues/14668
+# - Parent app health flips between Healthy/Progressing as child apps sync
+#   Reference: https://github.com/argoproj/argo-cd/issues/6708
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: homelab-apps
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+spec:
+  destination:
+    namespace: argocd
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: platform/argocd/apps
+    repoURL: https://github.com/adurrr/homelab-gitops-infra
+    targetRevision: HEAD
+  ignoreDifferences:
+    # === Child Application Resources ===
+    # ArgoCD normalizes Application specs during reconciliation, causing
+    # perpetual drift on several fields. These ignores prevent false OutOfSync.
+    # Reference: https://github.com/argoproj/argo-cd/issues/14668
+    - group: argoproj.io
+      kind: Application
+      jqPathExpressions:
+        # Helm block normalization: empty {} vs omitted
+        - '.spec.source.helm // empty'
+        # Retry block normalization
+        - '.spec.source.retry // empty'
+        # Sync policy automated block
+        - '.spec.syncPolicy.automated // empty'
+      # Ignore the instance label added by ArgoCD
+      jsonPointers:
+        - /metadata/labels/argocd.argoproj.io~1instance
+        # Refresh annotation added during manual refresh
+        - /metadata/annotations/argocd.argoproj.io~1refresh
+        # kubectl last-applied-configuration annotation
+        - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
+        # Operation state added during sync
+        - /status
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true

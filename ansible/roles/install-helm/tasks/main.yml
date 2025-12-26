@@ -1,0 +1,58 @@
+---
+# =============================================================================
+# Role: install-helm
+# =============================================================================
+# Installs Helm binary using the official get-helm-4 script.
+# Idempotent: skips if the correct version is already installed.
+# =============================================================================
+
+- name: Check if helm is already installed
+  ansible.builtin.shell: command -v helm && helm version --short 2>/dev/null || echo "not-installed"
+  changed_when: false
+  register: helm_check
+
+- name: Set helm installed version
+  ansible.builtin.set_fact:
+    helm_installed_version: >-
+      {{ 'none' if helm_check.stdout == 'not-installed' else (helm_check.stdout.split('+')[0] | default('none')) }}
+
+- name: Determine if helm needs install or upgrade
+  ansible.builtin.set_fact:
+    helm_needs_install: >-
+      {{ helm_check.stdout == 'not-installed' or helm_installed_version != 'v' + helm_version }}
+
+- name: Display helm version status
+  ansible.builtin.debug:
+    msg: >-
+      helm installed: {{ helm_check.stdout | default('not installed') }},
+      target: v{{ helm_version }},
+      needs install: {{ helm_needs_install }}
+
+- name: Install helm via official script
+  when: helm_needs_install | bool
+  block:
+    - name: Download helm install script
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4
+        dest: /tmp/get_helm.sh
+        mode: "0700"
+
+    - name: Run helm install script
+      ansible.builtin.command: /tmp/get_helm.sh
+      environment:
+        HELM_INSTALL_DIR: "{{ tools_install_dir }}"
+      changed_when: true
+
+    - name: Clean up helm install script
+      ansible.builtin.file:
+        path: /tmp/get_helm.sh
+        state: absent
+
+- name: Verify helm installation
+  ansible.builtin.command: helm version --short
+  changed_when: false
+  register: helm_verify
+
+- name: Display helm version
+  ansible.builtin.debug:
+    msg: "helm installed: {{ helm_verify.stdout }}"
