@@ -166,9 +166,16 @@ Loki ────────► Grafana (datasource: Loki)
 ```
 homelab-gitops-infra/
 ├── README.md                          # Portfolio overview & architecture
-├── PLAN.md                            # This file: phased execution plan
-├── Makefile                            # Automation: validate, test, deploy
-├── .pre-commit-config.yaml             # Pre-commit hooks config
+├── docs/                              # Documentation
+│   ├── plan/                          # Planning docs
+│   │   ├── PLAN.md                    # This file: phased execution plan
+│   │   ├── HOW-TO-RUN.md              # Step-by-step setup guide
+│   │   └── phases-overview.md
+│   ├── architecture.md
+│   ├── runbooks/
+│   └── tech_stack/
+├── Makefile                           # Automation: validate, test, deploy
+├── .pre-commit-config.yaml            # Pre-commit hooks config
 │
 ├── infra/                              # Phase 1: Cluster infrastructure
 │   ├── env.example                     # Template: copy to .env and fill in

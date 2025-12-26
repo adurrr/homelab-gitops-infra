@@ -39,6 +39,6 @@
 
 - [Phases Overview](../phases-overview.md): End-to-end walkthrough with diagrams
 - [Architecture Decisions](../architecture.md): AD-001 through AD-006
-- [PLAN.md](../../PLAN.md): Master execution plan with all phases
-- [HOW-TO-RUN.md](../../HOW-TO-RUN.md): Step-by-step setup guide
+- [PLAN.md](../../docs/plan/PLAN.md): Master execution plan with all phases
+- [HOW-TO-RUN.md](../../docs/plan/HOW-TO-RUN.md): Step-by-step setup guide
 - [Glossary](../glossary.md): Key terms and acronyms

@@ -63,18 +63,19 @@ Then open `https://argocd.homelab.local` and watch the apps deploy themselves.
 | 5 | Network policies, RBAC, CIS scanning | ✅ |
 | 6 | This documentation | ✅ |
 
-Full breakdown in [PLAN.md](PLAN.md).
+Full breakdown in [docs/plan/PLAN.md](docs/plan/PLAN.md). Step-by-step instructions in [docs/plan/HOW-TO-RUN.md](docs/plan/HOW-TO-RUN.md).
 
 ## Things I learned the hard way
 
 - **Cilium 1.19.x is broken on ARM64.** Silent host network death: SSH daemon stays up, but all TCP connections timeout. No errors anywhere. Pinned to 1.18.9 until it's fixed upstream.
 - **Don't run app pods on the control plane with Cilium.** The ClusterIP for the API server becomes unreachable from pods on the same node. Just keep the control plane tainted.
-- ** is tight.** With Prometheus, Loki, Grafana, ArgoCD, and Home Assistant all on the worker node, I had to reduce Loki's memcached caches from 10GB to 128MB and bump Traefik from 256MB to 384MB.
+- **4GB RAM is tight.** With Prometheus, Loki, Grafana, ArgoCD, and Home Assistant all on the worker node, I had to reduce Loki's memcached caches from 10GB to 128MB and bump Traefik from 256MB to 384MB.
 - **ArgoCD's Helm diff can't handle multi-line ConfigMap data.** Helm renders it as quoted strings, K8s stores it as block scalars. ArgoCD sees them as totally different. Fixed with `ignoreDifferences`.
 - **kube-bench on K3s shows false positives.** The tool checks kubeadm paths; K3s puts things under `/var/lib/rancher/k3s/`. Wrote a filter script.
 
 ## Docs
 
-- [PLAN.md](PLAN.md): the full plan with specs and tasks
+- [docs/plan/PLAN.md](docs/plan/PLAN.md): the full plan with specs and tasks
+- [docs/plan/HOW-TO-RUN.md](docs/plan/HOW-TO-RUN.md): step-by-step setup guide
 - [docs/architecture.md](docs/architecture.md): why I chose each tool
 - [docs/runbooks/](docs/runbooks/): recovery procedures for when things break
