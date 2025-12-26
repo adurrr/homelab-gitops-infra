@@ -114,7 +114,7 @@ monitor_network() {
         echo "ROUTES|$(date +%H:%M:%S)|$ROUTE_COUNT"
 
         # Check if node can reach gateway
-        timeout 1 ping -c1 <GATEWAY_IP> &>/dev/null && GW="REACHABLE" || GW="DEAD"
+        timeout 1 ping -c1 "${GATEWAY_IP:-192.168.1.1}" &>/dev/null && GW="REACHABLE" || GW="DEAD"
         echo "GATEWAY|$(date +%H:%M:%S)|$GW"
 
         # Check local DNS

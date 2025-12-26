@@ -86,7 +86,7 @@ while true; do
     fi
 
     # Gateway reachability
-    timeout 0.5 ping -c1 <GATEWAY_IP> &>/dev/null && GW="OK" || GW="DEAD"
+    timeout 0.5 ping -c1 "${GATEWAY_IP:-192.168.1.1}" &>/dev/null && GW="OK" || GW="DEAD"
 
     # DNS
     timeout 1 host -W1 google.com 127.0.0.1 &>/dev/null && DNS="OK" || DNS="FAIL"
