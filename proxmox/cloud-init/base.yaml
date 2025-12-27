@@ -1,0 +1,66 @@
+#cloud-config
+# =============================================================================
+# Proxmox Cloud-Init Base Template
+# =============================================================================
+# Applied to ALL VMs (testing, staging, production).
+# Handles: hostname, networking, SSH keys, kernel parameters, qemu-guest-agent.
+# K3s installation is NOT here — that's handled by Ansible in Phase 4.
+#
+# Variables: ${hostname}, ${ssh_keys} are injected by OpenTofu at provision time.
+# =============================================================================
+
+hostname: ${hostname}
+timezone: America/New_York
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - qemu-guest-agent
+  - curl
+  - wget
+  - gnupg2
+  - software-properties-common
+  - apt-transport-https
+  - ca-certificates
+  - nfs-common
+  - open-iscsi
+
+# --- Kernel Parameters for K3s/Cilium ---
+write_files:
+  - path: /etc/sysctl.d/99-k3s.conf
+    content: |
+      net.bridge.bridge-nf-call-iptables  = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+      net.ipv4.ip_forward                 = 1
+    permissions: '0644'
+
+  # SSH hardening: disable password auth, disable root password login
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin prohibit-password
+      KbdInteractiveAuthentication no
+    permissions: '0600'
+
+# --- Boot-Time Commands ---
+runcmd:
+  # Enable and start QEMU guest agent (enables Proxmox VM stats)
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
+
+  # Apply kernel parameters
+  - sysctl --system
+
+  # Disable swap (required by K3s)
+  - swapoff -a
+  - sed -i '/\sswap\s/d' /etc/fstab
+
+  # Restart SSH to apply hardening
+  - systemctl restart sshd
+
+# --- Power State ---
+power_state:
+  mode: reboot
+  message: Cloud-init complete — rebooting to apply all changes
+  timeout: 120

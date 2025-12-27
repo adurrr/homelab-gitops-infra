@@ -1,0 +1,23 @@
+# =============================================================================
+# Proxmox + OpenTofu — Terraform Variables Template
+# =============================================================================
+# Copy to terraform.tfvars and fill in your real values.
+# terraform.tfvars is gitignored — never commit real credentials.
+#
+# Usage: cd proxmox/opentofu && tofu plan
+# =============================================================================
+
+# Proxmox connection
+proxmox_endpoint          = "https://192.168.50.202:8006/"
+proxmox_api_token_id      = "terraform@pve!terraform"
+proxmox_api_token_secret  = "CHANGEME"
+proxmox_node_ip           = "192.168.50.202"
+proxmox_ssh_port          = 4749
+
+# K3s tokens (unique per environment)
+k3s_token_testing = "CHANGEME-testing-token"
+k3s_token_staging = "CHANGEME-staging-token"
+k3s_token_prod    = "CHANGEME-prod-token"
+
+# Existing K3s production cluster
+existing_k3s_server_ip = "192.168.50.60"

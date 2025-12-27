@@ -76,3 +76,42 @@ ansible/roles/*/tests/
 # OS files
 # -----------------------------------------------------------------------------
 Thumbs.db
+
+# =============================================================================
+# Proxmox + OpenTofu
+# =============================================================================
+
+# Environment
+proxmox/.env
+
+# OpenTofu state & provider cache
+proxmox/opentofu/**/.terraform/
+proxmox/opentofu/**/*.tfstate
+proxmox/opentofu/**/*.tfstate.*
+proxmox/opentofu/**/*.backup
+proxmox/opentofu/**/crash.log
+proxmox/opentofu/**/override.tf
+proxmox/opentofu/**/override.tf.json
+proxmox/opentofu/**/*_override.tf
+proxmox/opentofu/**/*_override.tf.json
+proxmox/opentofu/**/.terraform.tfstate.lock.info
+
+# OpenTofu plan files (binary, not diffs)
+proxmox/opentofu/**/*.tfplan
+
+# OpenTofu variables (copy from .example)
+proxmox/opentofu/terraform.tfvars
+!proxmox/opentofu/terraform.tfvars.example
+proxmox/ansible/inventory.yml
+proxmox/ansible/inventory.ini
+proxmox/ansible/**/*.retry
+
+# SSH keys (never commit)
+proxmox/**/*.pem
+proxmox/**/*.key
+proxmox/**/id_*
+proxmox/**/*_rsa
+proxmox/**/*_ed25519
+
+# Cloud-init rendered files
+proxmox/cloud-init/*.rendered.yaml

@@ -362,3 +362,112 @@ clean: ## Remove generated files (keep .env)
 	@find . -name "*.tgz" -delete
 	@find . -name ".helm" -type d -exec rm -rf {} + 2>/dev/null || true
 	@echo -e "$(GREEN)✓ Clean complete$(NC)"
+
+# =============================================================================
+# Proxmox + OpenTofu
+# =============================================================================
+
+PROXMOX_DIR := proxmox
+TOFU_DIR    := $(PROXMOX_DIR)/opentofu
+
+.PHONY: tofu-init tofu-plan tofu-apply tofu-destroy tofu-fmt tofu-validate
+.PHONY: tofu-plan-testing tofu-plan-staging tofu-plan-prod
+.PHONY: tofu-apply-testing tofu-apply-staging tofu-apply-prod
+.PHONY: test-proxmox-structure test-proxmox test-proxmox-phase0
+.PHONY: proxmox-help
+
+proxmox-help: ## Show Proxmox/OpenTofu targets
+	@echo "Proxmox + OpenTofu — Available Targets"
+	@echo "========================================"
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
+		grep -i 'tofu\|proxmox' | sort | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[0;32m%-30s\033[0m %s\n", $$1, $$2}'
+
+# --- Tofu Core ---
+
+tofu-fmt: ## Format all OpenTofu files
+	@echo -e "$(YELLOW)Formatting OpenTofu files...$(NC)"
+	@cd $(TOFU_DIR) && tofu fmt -recursive
+	@echo -e "$(GREEN)✓ OpenTofu formatting complete$(NC)"
+
+tofu-validate: ## Validate OpenTofu configuration
+	@echo -e "$(YELLOW)Validating OpenTofu configuration...$(NC)"
+	@cd $(TOFU_DIR) && tofu validate
+	@echo -e "$(GREEN)✓ OpenTofu configuration valid$(NC)"
+
+tofu-init: ## Initialize OpenTofu (local state during bootstrap)
+	@echo -e "$(YELLOW)Initializing OpenTofu...$(NC)"
+	@cd $(TOFU_DIR) && tofu init
+	@echo -e "$(GREEN)✓ OpenTofu initialized$(NC)"
+
+# --- Per-Environment Plan ---
+
+tofu-plan-testing: ## Plan changes for testing environment
+	@echo -e "$(YELLOW)Planning testing environment...$(NC)"
+	@cd $(TOFU_DIR) && tofu plan -target=module.testing_vm
+
+tofu-plan-staging: ## Plan changes for staging environment
+	@echo -e "$(YELLOW)Planning staging environment...$(NC)"
+	@cd $(TOFU_DIR) && tofu plan -target=module.staging_vm
+
+tofu-plan-prod: ## Plan changes for production environment
+	@echo -e "$(YELLOW)Planning production environment...$(NC)"
+	@cd $(TOFU_DIR) && tofu plan -target=module.prod_vm
+
+tofu-plan: ## Plan all environments (full plan)
+	@echo -e "$(YELLOW)Planning all environments...$(NC)"
+	@cd $(TOFU_DIR) && tofu plan
+
+# --- Per-Environment Apply ---
+
+tofu-apply-testing: ## Apply changes to testing environment
+	@echo -e "$(YELLOW)Applying testing environment...$(NC)"
+	@cd $(TOFU_DIR) && tofu apply -target=module.testing_vm -auto-approve
+
+tofu-apply-staging: ## Apply changes to staging environment (manual confirm)
+	@echo -e "$(YELLOW)Applying staging environment...$(NC)"
+	@echo "⚠️  This modifies the staging cluster. Confirm to continue."
+	@cd $(TOFU_DIR) && tofu apply -target=module.staging_vm
+
+tofu-apply-prod: ## Apply changes to production environment (manual confirm)
+	@echo -e "$(YELLOW)Applying production environment...$(NC)"
+	@echo "⚠️  This modifies the production cluster. Confirm to continue."
+	@cd $(TOFU_DIR) && tofu apply -target=module.prod_vm
+
+tofu-apply: ## Apply all environments (manual confirm)
+	@echo -e "$(YELLOW)Applying all environments...$(NC)"
+	@cd $(TOFU_DIR) && tofu apply
+
+tofu-destroy-testing: ## Destroy testing environment
+	@echo -e "$(YELLOW)Destroying testing environment...$(NC)"
+	@cd $(TOFU_DIR) && tofu destroy -target=module.testing_vm -auto-approve
+
+# --- Testing ---
+
+test-proxmox-structure: ## Validate proxmox directory structure
+	@echo -e "$(YELLOW)Validating Proxmox directory structure...$(NC)"
+	@for dir in \
+		$(PROXMOX_DIR)/opentofu/modules/vm \
+		$(PROXMOX_DIR)/opentofu/environments/testing \
+		$(PROXMOX_DIR)/opentofu/environments/staging \
+		$(PROXMOX_DIR)/opentofu/environments/prod \
+		$(PROXMOX_DIR)/opentofu/templates \
+		$(PROXMOX_DIR)/ansible/playbooks \
+		$(PROXMOX_DIR)/ansible/roles \
+		$(PROXMOX_DIR)/cloud-init \
+		$(PROXMOX_DIR)/aiops/k8sgpt \
+		$(PROXMOX_DIR)/aiops/falco \
+		$(PROXMOX_DIR)/aiops/anomaly \
+		$(PROXMOX_DIR)/tests \
+		$(PROXMOX_DIR)/docs/runbooks \
+		$(PROXMOX_DIR)/docs/tech_stack; do \
+		if [ ! -d "$$dir" ]; then \
+			echo "❌ Missing directory: $$dir"; exit 1; \
+		fi; \
+	done
+	@echo -e "$(GREEN)✓ Proxmox directory structure valid$(NC)"
+
+test-proxmox-phase0: tofu-fmt tofu-validate test-proxmox-structure ## Run Phase 0 tests
+	@echo -e "$(GREEN)✓ Phase 0 complete$(NC)"
+
+test-proxmox: test-proxmox-phase0 ## Run all Proxmox tests
