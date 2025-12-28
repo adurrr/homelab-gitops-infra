@@ -126,6 +126,7 @@ module "prod_vm" {
   vm_id          = 301
   node_name      = var.proxmox_node_name
   cpu_cores      = 4
+  cpu_type       = "host"
   memory_mb      = 8192
   disk_size_gb   = 100
   network_bridge = "vmbr0"

@@ -1,0 +1,84 @@
+# =============================================================================
+# Alertmanager Configuration Secret
+# =============================================================================
+# Standalone Alertmanager config referenced by the Prometheus CRD's
+# configSecret field. Bypasses Helm chart rendering to avoid the
+# ignoreDifferences deadlock on the Helm-managed Secret.
+#
+# Deployed by the prometheus-rules ArgoCD app (sync wave 1).
+# Pointed to by: prometheus.yaml → alertmanagerSpec.configSecret
+# =============================================================================
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-telegram-config
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+type: Opaque
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
+
+    receivers:
+      - name: 'telegram'
+        webhook_configs:
+          - url: 'http://alertmanager-telegram-bot.monitoring.svc.cluster.local:8080/alerts'
+            send_resolved: true
+
+      - name: 'rocketchat'
+        webhook_configs:
+          - url: 'https://chat.example.com/hooks/REPLACE_WITH_ROCKETCHAT_WEBHOOK'
+            send_resolved: true
+
+      - name: 'null'
+
+    inhibit_rules:
+      - source_matchers:
+          - severity = critical
+        target_matchers:
+          - severity =~ "warning|info"
+        equal:
+          - instance
+
+      - source_matchers:
+          - alertname = "KubeNodeNotReady"
+        target_matchers:
+          - alertname =~ "KubePod.*|OOMKilled"
+        equal:
+          - node
+
+      - source_matchers:
+          - alertname = "KubePodCrashLooping"
+        target_matchers:
+          - alertname = "KubePodNotReady"
+        equal:
+          - namespace
+          - pod
+
+    route:
+      receiver: 'null'
+      group_by: ['alertname', 'namespace']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 6h
+      routes:
+        - matchers:
+            - severity = critical
+          receiver: 'telegram'
+          group_wait: 10s
+          group_interval: 5m
+          repeat_interval: 1h
+
+        - matchers:
+            - severity = warning
+          receiver: 'telegram'
+          group_wait: 2m
+          group_interval: 15m
+          repeat_interval: 4h
+
+        - matchers:
+            - severity = info
+          receiver: 'null'

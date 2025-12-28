@@ -39,6 +39,12 @@ variable "template_id" {
   default     = 9000
 }
 
+variable "cpu_type" {
+  description = "QEMU CPU model (host, x86-64-v2-AES, x86-64-v3, etc.)"
+  type        = string
+  default     = "x86-64-v2-AES"
+}
+
 variable "cpu_cores" {
   description = "Number of vCPU cores"
   type        = number
@@ -155,7 +161,7 @@ resource "proxmox_virtual_environment_vm" "vm" {
   cpu {
     cores   = var.cpu_cores
     sockets = 1
-    type    = "x86-64-v2-AES"
+    type    = var.cpu_type
     numa    = false
   }
 
