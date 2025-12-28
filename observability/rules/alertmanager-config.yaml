@@ -65,6 +65,11 @@ stringData:
       group_interval: 5m
       repeat_interval: 6h
       routes:
+        # Homelab-specific: mute noisy chart defaults that are always false positives
+        - matchers:
+            - alertname =~ "TargetDown|InfoInhibitor|KubeDaemonSetMisScheduled|NodeDiskIOSaturation|KubeNodeReadinessFlapping|NodeMemoryMajorPagesFaults"
+          receiver: 'null'
+
         - matchers:
             - severity = critical
           receiver: 'telegram'
