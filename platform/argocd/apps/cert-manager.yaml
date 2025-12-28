@@ -43,6 +43,28 @@ spec:
           value: "true"
         - name: "prometheus.servicemonitor.enabled"
           value: "false"
+      values: |
+        affinity:
+          nodeAffinity:
+            preferredDuringSchedulingIgnoredDuringExecution:
+              - weight: 100
+                preference:
+                  matchExpressions:
+                    - key: kubernetes.io/hostname
+                      operator: In
+                      values:
+                        - minipc
+        cainjector:
+          affinity:
+            nodeAffinity:
+              preferredDuringSchedulingIgnoredDuringExecution:
+                - weight: 100
+                  preference:
+                    matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: In
+                        values:
+                          - minipc
   syncPolicy:
     automated:
       prune: true
