@@ -1,0 +1,77 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Pod & Workload Alerts
+# =============================================================================
+# Covers crashlooping pods, readiness, deployment replica mismatches,
+# and OOMKilled events. Most common failure modes in a homelab.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pod-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+    - name: pod
+      interval: 1m
+      rules:
+        - alert: KubePodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total[15m]) > 0
+          for: 0m
+          labels:
+            severity: warning
+            alert_type: pod
+          annotations:
+            summary: >
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} is crashlooping
+            description: >
+              Container {{ $labels.container }} in pod
+              {{ $labels.namespace }}/{{ $labels.pod }} has restarted
+              {{ printf "%.0f" $value }} times in the last 15 minutes.
+
+        - alert: KubePodNotReady
+          expr: >
+            sum by (namespace, pod) (kube_pod_status_ready{condition="true"})
+            == 0
+          for: 10m
+          labels:
+            severity: warning
+            alert_type: pod
+          annotations:
+            summary: >
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} is not ready
+            description: >
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} has been not ready
+              for more than 10 minutes.
+
+        - alert: KubeDeploymentReplicasMismatch
+          expr: kube_deployment_status_replicas_unavailable > 0
+          for: 10m
+          labels:
+            severity: warning
+            alert_type: pod
+          annotations:
+            summary: >
+              Deployment {{ $labels.namespace }}/{{ $labels.deployment }}
+              has unavailable replicas
+            description: >
+              Deployment {{ $labels.namespace }}/{{ $labels.deployment }}
+              has {{ $value }} unavailable replicas for 10 minutes.
+
+        - alert: OOMKilled
+          expr: >
+            increase(kube_pod_container_status_last_terminated_reason{
+              reason="OOMKilled"}[5m]) > 0
+          for: 0m
+          labels:
+            severity: warning
+            alert_type: pod
+          annotations:
+            summary: >
+              Pod {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled
+            description: >
+              Container {{ $labels.container }} in pod
+              {{ $labels.namespace }}/{{ $labels.pod }} was killed due to
+              out-of-memory. Consider increasing memory limits.

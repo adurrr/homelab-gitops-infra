@@ -24,7 +24,7 @@ metadata:
 spec:
   description: Observability stack - Prometheus, Grafana, Loki, OTel
   sourceRepos:
-    - https://github.com/<GITHUB_USER>/<REPO_NAME>
+    - https://github.com/adurrr/homelab-gitops-infra
     - https://prometheus-community.github.io/helm-charts
     - https://grafana.github.io/helm-charts
     - https://grafana-community.github.io/helm-charts

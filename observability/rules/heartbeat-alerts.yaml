@@ -1,0 +1,60 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Heartbeat & Dead Man's Switch Alerts
+# =============================================================================
+# Ensures the monitoring pipeline itself is operational.
+# The Watchdog alert should ALWAYS fire — its absence means Prometheus or
+# Alertmanager is down.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: heartbeat-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+    - name: heartbeat
+      interval: 1m
+      rules:
+        # Dead man's switch — should ALWAYS fire.
+        # If this alert disappears, Alertmanager or Prometheus is down.
+        - alert: Watchdog
+          expr: vector(1)
+          for: 0m
+          labels:
+            severity: critical
+            alert_type: heartbeat
+          annotations:
+            summary: "Dead man's switch — Alertmanager is alive"
+            description: |
+              This alert fires continuously to verify the alerting pipeline is
+              operational. If you stop seeing this alert, either Alertmanager
+              or Prometheus is down.
+
+        # Alertmanager instance check
+        - alert: AlertmanagerDown
+          expr: up{job="alertmanager-main"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            alert_type: heartbeat
+          annotations:
+            summary: "Alertmanager is down"
+            description: >
+              Alertmanager instance {{ $labels.instance }} has been down for
+              more than 2 minutes.
+
+        # Prometheus scraping itself check
+        - alert: PrometheusTargetMissing
+          expr: up{job=~"prometheus|alertmanager|grafana"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            alert_type: heartbeat
+          annotations:
+            summary: "Prometheus monitoring target is down"
+            description: >
+              Target {{ $labels.job }}/{{ $labels.instance }} has been
+              unreachable for 5 minutes.

@@ -1,0 +1,71 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Node-Level Alerts
+# =============================================================================
+# Covers node readiness, memory/disk pressure, and Cilium agent health.
+# Thresholds tuned for a 2-node ARM64 cluster with 8GB RAM per node.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: node-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+    - name: node
+      interval: 1m
+      rules:
+        - alert: KubeNodeNotReady
+          expr: kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            alert_type: node
+          annotations:
+            summary: "Node {{ $labels.node }} is NotReady"
+            description: >
+              Node {{ $labels.node }} has been NotReady for more than 5 minutes.
+              Check `kubectl describe node {{ $labels.node }}`.
+
+        - alert: NodeMemoryPressure
+          expr: >
+            (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))
+            * 100 > 85
+          for: 5m
+          labels:
+            severity: warning
+            alert_type: node
+          annotations:
+            summary: "Node {{ $labels.instance }} is under memory pressure"
+            description: >
+              Memory usage on {{ $labels.instance }} is at
+              {{ printf "%.0f" $value }}% for 5 minutes.
+
+        - alert: NodeDiskPressure
+          expr: >
+            (1 - (node_filesystem_avail_bytes{mountpoint="/",fstype!=""}
+            / node_filesystem_size_bytes{mountpoint="/",fstype!=""}))
+            * 100 > 85
+          for: 5m
+          labels:
+            severity: warning
+            alert_type: node
+          annotations:
+            summary: "Node {{ $labels.instance }} disk usage is high"
+            description: >
+              Root filesystem on {{ $labels.instance }} is at
+              {{ printf "%.0f" $value }}% usage.
+
+        - alert: CiliumAgentDown
+          expr: up{job="cilium-agent"} == 0
+          for: 3m
+          labels:
+            severity: warning
+            alert_type: node
+          annotations:
+            summary: "Cilium agent is down"
+            description: >
+              Cilium agent on {{ $labels.node }} has been unreachable for
+              3 minutes. Network policy enforcement may be degraded.

@@ -1,0 +1,66 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Certificate Expiry Alerts
+# =============================================================================
+# cert-manager auto-renews certificates, but ACME challenges can fail
+# (rate limits, DNS issues, ingress misconfiguration). These alerts catch
+# silent renewal failures before browsers show certificate errors.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: cert-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+    - name: cert
+      interval: 5m
+      rules:
+        - alert: CertificateExpiringSoon
+          expr: >
+            (certmanager_certificate_expiration_timestamp_seconds - time())
+            < 86400 * 14
+          for: 30m
+          labels:
+            severity: warning
+            alert_type: certificate
+          annotations:
+            summary: >
+              Certificate {{ $labels.name }} expires in less than 14 days
+            description: >
+              Certificate {{ $labels.namespace }}/{{ $labels.name }} expires
+              in {{ printf "%.0f"
+              ((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400)
+              }} days.
+
+        - alert: CertificateExpiringCritical
+          expr: >
+            (certmanager_certificate_expiration_timestamp_seconds - time())
+            < 86400 * 3
+          for: 30m
+          labels:
+            severity: critical
+            alert_type: certificate
+          annotations:
+            summary: >
+              Certificate {{ $labels.name }} expires in less than 3 days
+            description: >
+              Certificate {{ $labels.namespace }}/{{ $labels.name }} expires
+              in {{ printf "%.0f"
+              ((certmanager_certificate_expiration_timestamp_seconds - time()) / 86400)
+              }} days. Renewal may have failed. Check cert-manager logs.
+
+        - alert: CertificateNotReady
+          expr: >
+            certmanager_certificate_ready_status{condition="False"} > 0
+          for: 10m
+          labels:
+            severity: warning
+            alert_type: certificate
+          annotations:
+            summary: "Certificate {{ $labels.name }} is not ready"
+            description: >
+              Certificate {{ $labels.namespace }}/{{ $labels.name }} has been
+              in not-ready state for 10 minutes. Check cert-manager challenges.

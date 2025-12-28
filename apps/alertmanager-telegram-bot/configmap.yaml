@@ -1,0 +1,119 @@
+# =============================================================================
+# Alertmanager → Telegram Bridge — Python App (ConfigMap)
+# =============================================================================
+# Simple HTTP server that receives Alertmanager webhook payloads and
+# forwards them to a Telegram chat via the Bot API.
+#
+# No external dependencies — uses only Python stdlib.
+# Deployed via ConfigMap mounted into a python:3.13-alpine container.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-telegram-bot-script
+  namespace: monitoring
+data:
+  app.py: |
+    import json
+    import os
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+    from urllib.parse import urlencode
+    from urllib.request import Request, urlopen
+
+    BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+    CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+    LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "8080"))
+
+
+    def send_telegram(text: str) -> None:
+        """Send a message to Telegram via Bot API."""
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        data = urlencode({
+            "chat_id": CHAT_ID,
+            "text": text,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        }).encode()
+        try:
+            req = Request(url, data=data, method="POST")
+            with urlopen(req, timeout=10) as resp:
+                resp.read()  # drain response
+        except Exception as e:
+            print(f"Telegram send failed: {e}", flush=True)
+
+
+    class AlertHandler(BaseHTTPRequestHandler):
+        """Handle Alertmanager webhook POST requests."""
+
+        def do_GET(self):
+            """Health check endpoint."""
+            if self.path == "/healthz":
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"ok")
+                return
+            self.send_response(404)
+            self.end_headers()
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                self.send_response(400)
+                self.end_headers()
+                return
+
+            status = payload.get("status", "unknown")
+            emoji = "\U0001F525" if status == "firing" \
+                else "\u2705" if status == "resolved" \
+                else "\u2139\ufe0f"
+
+            lines = [f"{emoji}  <b>{status.upper()}</b>\n"]
+
+            for alert in payload.get("alerts", [])[:20]:
+                labels = alert.get("labels", {})
+                annotations = alert.get("annotations", {})
+
+                name = labels.get("alertname", "Unknown Alert")
+                severity = labels.get("severity", "unknown")
+                namespace = labels.get("namespace", "")
+                summary = annotations.get("summary", "")
+
+                lines.append(f"<b>{name}</b>  [{severity}]")
+                if namespace:
+                    lines.append(f"Namespace: <code>{namespace}</code>")
+                if summary:
+                    lines.append(f"{summary}")
+
+                desc = annotations.get("description", "")
+                if desc:
+                    desc = desc.strip().replace("\n", " ")
+                    if len(desc) > 250:
+                        desc = desc[:247] + "..."
+                    lines.append(f"<i>{desc}</i>")
+
+                lines.append("")
+
+            message = "\n".join(lines)
+            if len(message) > 4096:
+                message = message[:4050] + "\n\n<i>...truncated</i>"
+
+            send_telegram(message)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
+
+        def log_message(self, fmt, *args):
+            print(f"[{self.log_date_time_string()}] {fmt % args}", flush=True)
+
+
+    def main():
+        print(f"Starting Telegram bridge on port {LISTEN_PORT}", flush=True)
+        server = HTTPServer(("0.0.0.0", LISTEN_PORT), AlertHandler)
+        server.serve_forever()
+
+
+    if __name__ == "__main__":
+        main()

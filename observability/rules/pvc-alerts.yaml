@@ -1,0 +1,66 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: PersistentVolume & Storage Alerts
+# =============================================================================
+# Covers PVC exhaustion (warning at 85%, critical at 95%) and PV failures.
+# PVC fills are the #1 silent failure mode in a homelab — backups, logs,
+# and databases all share limited storage.
+# =============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: pvc-alerts
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+    - name: pvc
+      interval: 1m
+      rules:
+        - alert: PersistentVolumeFillingUp
+          expr: >
+            (kubelet_volume_stats_available_bytes
+            / kubelet_volume_stats_capacity_bytes) < 0.15
+          for: 10m
+          labels:
+            severity: warning
+            alert_type: storage
+          annotations:
+            summary: >
+              PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }}
+              is almost full
+            description: >
+              PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }}
+              has {{ printf "%.0f" (mul $value 100) }}% available space
+              remaining.
+
+        - alert: PersistentVolumeFull
+          expr: >
+            (kubelet_volume_stats_available_bytes
+            / kubelet_volume_stats_capacity_bytes) < 0.05
+          for: 5m
+          labels:
+            severity: critical
+            alert_type: storage
+          annotations:
+            summary: >
+              PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }}
+              is full
+            description: >
+              PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }}
+              has only {{ printf "%.0f" (mul $value 100) }}% available space.
+              Writes may fail.
+
+        - alert: PersistentVolumeErrors
+          expr: kube_persistentvolume_status_phase{phase="Failed"} > 0
+          for: 5m
+          labels:
+            severity: warning
+            alert_type: storage
+          annotations:
+            summary: >
+              PersistentVolume {{ $labels.persistentvolume }} is in Failed phase
+            description: >
+              PersistentVolume {{ $labels.persistentvolume }} has been in Failed
+              state for 5 minutes.

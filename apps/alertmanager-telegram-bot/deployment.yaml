@@ -1,0 +1,86 @@
+# =============================================================================
+# Alertmanager → Telegram Bridge — Deployment
+# =============================================================================
+# Runs a minimal Python HTTP server (stdlib only) that translates
+# Alertmanager webhook payloads into Telegram messages.
+#
+# Image: python:3.13-alpine — ships multi-arch (amd64 + arm64).
+# Script: mounted from ConfigMap at /app/app.py.
+# Secrets: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID from Kubernetes Secret.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alertmanager-telegram-bot
+  namespace: monitoring
+  labels:
+    app: alertmanager-telegram-bot
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alertmanager-telegram-bot
+  template:
+    metadata:
+      labels:
+        app: alertmanager-telegram-bot
+    spec:
+      containers:
+        - name: bridge
+          image: python:3.13-alpine
+          command:
+            - python
+            - /app/app.py
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: alertmanager-telegram-secret
+                  key: TELEGRAM_BOT_TOKEN
+            - name: TELEGRAM_CHAT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: alertmanager-telegram-secret
+                  key: TELEGRAM_CHAT_ID
+            - name: LISTEN_PORT
+              value: "8080"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: script
+              mountPath: /app
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: alertmanager-telegram-bot-script

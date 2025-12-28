@@ -1,0 +1,45 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Prometheus Rules Application
+# =============================================================================
+# Deploys PrometheusRule CRDs for alerting rules.
+# Managed by the "observability" AppProject.
+#
+# These rules are deployed separately from the Helm chart so they can be
+# managed as individual YAML files in the repository, following GitOps
+# source-of-truth principles (Constitution Rule #2).
+#
+# Sync wave 1: deploys after prometheus (wave 0) which creates the CRDs.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus-rules
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  destination:
+    namespace: monitoring
+    server: https://kubernetes.default.svc
+  project: observability
+  source:
+    path: observability/rules
+    repoURL: https://github.com/adurrr/homelab-gitops-infra
+    targetRevision: HEAD
+  ignoreDifferences:
+    # PrometheusRule spec may be modified by the operator at runtime.
+    # Ignore spec drift to prevent false-positive OutOfSync.
+    # Reference: https://github.com/prometheus-community/helm-charts/issues/4914
+    - group: monitoring.coreos.com
+      kind: PrometheusRule
+      jsonPointers:
+        - /spec
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
