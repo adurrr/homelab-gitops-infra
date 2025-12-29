@@ -47,6 +47,8 @@ spec:
             homelab-gitops-infra:
               url: https://github.com/<GITHUB_USER>/<REPO_NAME>
               type: git
+          cm:
+            accounts.admin: apiKey, login
         server:
           ingress:
             enabled: true
