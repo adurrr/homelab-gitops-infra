@@ -1,0 +1,95 @@
+# =============================================================================
+# Loki Alert Rules — LogQL-Based Alerts
+# =============================================================================
+# Catches patterns Prometheus can't see: auth failures, OOM traces in logs,
+# disk-full errors, crashloop events.
+#
+# Deployed as a ConfigMap with label "loki_rule: alert".
+# The Loki sidecar syncs rules to the ruler.
+# The ruler forwards firing alerts to Alertmanager.
+# =============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-alert-rules
+  namespace: monitoring
+  labels:
+    loki_rule: "alert"
+data:
+  rules.yaml: |
+    groups:
+      - name: log-based-alerts
+        rules:
+          # Triggered when any pod logs contain a CrashLoopBackOff event.
+          # Catches init container failures that don't produce Prometheus metrics.
+          - alert: LogCrashLoopBackOff
+            expr: |
+              count_over_time({namespace=~".+"} |= "CrashLoopBackOff" [5m]) > 0
+            for: 2m
+            labels:
+              severity: warning
+              alert_type: log
+            annotations:
+              summary: "CrashLoopBackOff detected in logs — {{ $labels.namespace }}"
+              description: |
+                A pod in namespace {{ $labels.namespace }} is crashlooping.
+                Check: kubectl get pods -n {{ $labels.namespace }}
+
+          # Triggered when any pod is killed by the OOM killer.
+          # OOMKilled with no graceful shutdown often means memory limits too tight.
+          - alert: LogOOMKilled
+            expr: |
+              count_over_time({namespace=~".+"} |= "OOMKilled" [5m]) > 0
+            for: 1m
+            labels:
+              severity: warning
+              alert_type: log
+            annotations:
+              summary: "OOMKill detected in logs — {{ $labels.namespace }}"
+              description: |
+                A pod in namespace {{ $labels.namespace }} was killed by OOM.
+                Check memory limits with: kubectl describe pod -n {{ $labels.namespace }}
+
+          # Triggered when any container logs a "No space left on device" error.
+          # PVC fills are silent until the application crashes.
+          - alert: LogDiskFull
+            expr: |
+              count_over_time({namespace=~".+"} |= "No space left on device" [5m]) > 0
+            for: 2m
+            labels:
+              severity: critical
+              alert_type: log
+            annotations:
+              summary: "Disk full error in logs — {{ $labels.namespace }}"
+              description: |
+                A container in {{ $labels.namespace }} is seeing disk-full errors.
+                Check PVC usage: kubectl get pvc -n {{ $labels.namespace }}
+
+          # Triggered on repeated failed authentication attempts in Traefik logs.
+          # Indicates brute-force attempts or misconfigured clients.
+          - alert: LogAuthFailures
+            expr: |
+              rate({namespace="traefik"} |= "401" [5m]) > 5
+            for: 3m
+            labels:
+              severity: warning
+              alert_type: log
+            annotations:
+              summary: "High rate of 401 auth failures in Traefik"
+              description: |
+                More than 5 unauthorized requests per second in Traefik logs.
+                Check for misconfigured clients or potential brute-force attempts.
+
+          # Cilium agent errors — often the first sign of network issues.
+          - alert: LogCiliumErrors
+            expr: |
+              count_over_time({namespace="kube-system", app="cilium"} |= "error" [5m]) > 10
+            for: 3m
+            labels:
+              severity: warning
+              alert_type: log
+            annotations:
+              summary: "Cilium agent logging errors"
+              description: |
+                Cilium agent is logging error-level events.
+                Check: kubectl logs -n kube-system -l k8s-app=cilium

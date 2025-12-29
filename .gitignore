@@ -115,5 +115,3 @@ proxmox/**/*_ed25519
 
 # Cloud-init rendered files
 proxmox/cloud-init/*.rendered.yaml
-
-
