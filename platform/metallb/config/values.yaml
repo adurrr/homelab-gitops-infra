@@ -1,0 +1,10 @@
+# =============================================================================
+# MetalLB Configuration: Helm values
+# =============================================================================
+# Adjust the IP range to match your LAN.
+# These IPs will be assigned to LoadBalancer services by MetalLB.
+# =============================================================================
+
+ipAddressPool:
+  addresses:
+    - <METALLB_IP>-<METALLB_IP_END>  # ADJUST to your LAN range

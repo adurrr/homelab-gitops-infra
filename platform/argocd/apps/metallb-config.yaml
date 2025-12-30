@@ -23,9 +23,14 @@ spec:
     path: platform/metallb/config
     repoURL: https://github.com/adurrr/homelab-gitops-infra
     targetRevision: HEAD
+    helm:
+      valueFiles:
+        - values.yaml
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
