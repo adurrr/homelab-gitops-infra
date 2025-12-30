@@ -26,4 +26,5 @@ ignore: |
   infra/.env
   apps/*/templates/
   */templates/
+  platform/*/*/templates/
   proxmox/cloud-init/base.yaml
