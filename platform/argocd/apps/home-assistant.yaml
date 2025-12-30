@@ -39,8 +39,7 @@ spec:
 
     # === Home Assistant ConfigMap ===
     # Users may modify config via HA UI or YAML editor.
-    - group: ""
-      kind: ConfigMap
+    - kind: ConfigMap
       name: home-assistant-config
       jsonPointers:
         - /data

@@ -146,36 +146,30 @@ spec:
 
     # === Secrets ===
     # ArgoCD manages its own secrets: they get modified at runtime
-    - group: ""
-      kind: Secret
+    - kind: Secret
       name: argocd-secret
       jsonPointers:
         - /data
 
     # === ConfigMaps ===
     # ArgoCD configmap may be modified by the controller
-    - group: ""
-      kind: ConfigMap
+    - kind: ConfigMap
       name: argocd-cm
       jsonPointers:
         - /data
-    - group: ""
-      kind: ConfigMap
+    - kind: ConfigMap
       name: argocd-cmd-params-cm
       jsonPointers:
         - /data
-    - group: ""
-      kind: ConfigMap
+    - kind: ConfigMap
       name: argocd-rbac-cm
       jsonPointers:
         - /data
-    - group: ""
-      kind: ConfigMap
+    - kind: ConfigMap
       name: argocd-ssh-known-hosts-cm
       jsonPointers:
         - /data
-    - group: ""
-      kind: ConfigMap
+    - kind: ConfigMap
       name: argocd-tls-certs-cm
       jsonPointers:
         - /data

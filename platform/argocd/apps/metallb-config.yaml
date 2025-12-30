@@ -26,6 +26,22 @@ spec:
     helm:
       valueFiles:
         - values.yaml
+  ignoreDifferences:
+    # === IPAddressPool ===
+    # Real LAN IPs are set per-environment on the cluster.
+    # Git holds placeholders (<METALLB_IP>-<METALLB_IP_END>) — never overwrite.
+    - group: metallb.io
+      kind: IPAddressPool
+      name: homelab-pool
+      jsonPointers:
+        - /spec/addresses
+    # === L2Advertisement ===
+    # CRD-defaulted fields may drift; ignore entire spec to prevent noise.
+    - group: metallb.io
+      kind: L2Advertisement
+      name: homelab-l2
+      jsonPointers:
+        - /spec
   syncPolicy:
     automated:
       prune: true
