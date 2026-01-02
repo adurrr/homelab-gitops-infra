@@ -1,0 +1,101 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: K8sGPT Application
+# =============================================================================
+# Deploys the K8sGPT operator for AI-powered Kubernetes diagnostics.
+# Managed by the "observability" AppProject.
+#
+# Backend: noopai (analysis-only, no AI explanations — zero cost/ram).
+#          Switch to openai or ollama by setting k8sgpt.backend.
+#
+# Auto-remediation: DISABLED (Alpha feature, project warns against it).
+#
+# Resources: ~50m CPU, 128Mi RAM — negligible overhead.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: k8sgpt
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argoproj.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  destination:
+    namespace: monitoring
+    server: https://kubernetes.default.svc
+  project: observability
+  source:
+    chart: k8sgpt-operator
+    repoURL: https://charts.k8sgpt.ai
+    targetRevision: 0.2.27
+    helm:
+      values: |
+        k8sgpt:
+          backend: noopai
+          # To switch to AI backend later, uncomment and set:
+          # backend: openai
+          # secret:
+          #   name: k8sgpt-ai-secret
+          #   key: openai-api-key
+          # model: gpt-4o-mini
+
+          # Analysis filters — catch silent issues Prometheus can't see
+          filters:
+            - Pod
+            - Deployment
+            - ReplicaSet
+            - StatefulSet
+            - Service
+            - Ingress
+            - Node
+            - PersistentVolumeClaim
+            - CronJob
+            - Job
+            - MutatingWebhookConfiguration
+            - ValidatingWebhookConfiguration
+            - HorizontalPodAutoscaler
+
+          # Do NOT enable auto-remediation (Alpha, unstable)
+          autoRemediation:
+            enabled: false
+
+        # Operator controller
+        controllerManager:
+          manager:
+            resources:
+              requests:
+                cpu: 10m
+                memory: 64Mi
+              limits:
+                cpu: 200m
+                memory: 128Mi
+          kubeRbacProxy:
+            resources:
+              requests:
+                cpu: 5m
+                memory: 32Mi
+              limits:
+                cpu: 100m
+                memory: 64Mi
+
+        # Prometheus metrics for the operator itself
+        serviceMonitor:
+          enabled: true
+
+        # Grafana dashboard showing analysis results
+        grafanaDashboard:
+          enabled: true
+
+        # Interplex for result caching
+        interplex:
+          enabled: false
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
