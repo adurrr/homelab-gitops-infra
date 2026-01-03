@@ -1,0 +1,196 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-alert-pod-crashlooping
+  namespace: monitoring
+  labels:
+    grafana_alert: "1"
+data:
+  alert.yaml: |
+    apiVersion: 1
+    groups:
+      - orgId: 1
+        name: homelab-pod-health
+        folder: Homelab
+        interval: 1m
+        rules:
+          - uid: pod-crashlooping-5m
+            title: Pod CrashLooping >5m
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: sum by (namespace, pod) (kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"}) > 0
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params: [0]
+                      operator: { type: and }
+                      query: { params: [A] }
+                      reducer: { type: last }
+                      type: query
+            noDataState: NoData
+            execErrState: Error
+            for: 5m
+            annotations:
+              summary: 'Pod {{ $labels.pod }} in {{ $labels.namespace }} has been crashlooping for >5m'
+              description: 'Container in pod {{ $labels.pod }} ({{ $labels.namespace }}) has been in CrashLoopBackOff state.'
+            labels:
+              severity: critical
+              source: grafana
+              namespace: "{{ $labels.namespace }}"
+              pod: "{{ $labels.pod }}"
+
+          - uid: pod-restart-loop
+            title: Pod restarting frequently (>5 restarts in 1h)
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 3600
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: sum by (namespace, pod) (increase(kube_pod_container_status_restarts_total[1h])) > 5
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params: [5]
+                      operator: { type: and }
+                      query: { params: [A] }
+                      reducer: { type: last }
+                      type: query
+            noDataState: NoData
+            execErrState: Error
+            for: 5m
+            annotations:
+              summary: 'Pod {{ $labels.pod }} ({{ $labels.namespace }}) restarted >5 times in 1h'
+            labels:
+              severity: warning
+              source: grafana
+
+      - orgId: 1
+        name: homelab-node-health
+        folder: Homelab
+        interval: 1m
+        rules:
+          - uid: node-down-5m
+            title: Node down for >5m
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: sum(kube_node_status_condition{condition="Ready",status="true"}) < 2
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator:
+                        type: lt
+                        params: [2]
+                      operator: { type: and }
+                      query: { params: [A] }
+                      reducer: { type: last }
+                      type: query
+            noDataState: NoData
+            execErrState: Error
+            for: 5m
+            annotations:
+              summary: 'Less than 2 nodes are Ready (got {{ $value }})'
+            labels:
+              severity: critical
+              source: grafana
+
+      - orgId: 1
+        name: homelab-ingress-health
+        folder: Homelab
+        interval: 1m
+        rules:
+          - uid: ingress-5xx-spike
+            title: Ingress 5xx error rate >1% for 5m
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: |
+                    sum(rate(traefik_entrypoint_requests_total{code=~"5.."}[5m]))
+                    /
+                    clamp_min(sum(rate(traefik_entrypoint_requests_total[5m])), 1)
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params: [0.01]
+                      operator: { type: and }
+                      query: { params: [A] }
+                      reducer: { type: last }
+                      type: query
+            noDataState: NoData
+            execErrState: Error
+            for: 5m
+            annotations:
+              summary: 'Ingress 5xx error rate is {{ $value | humanizePercentage }} (>1% for 5m)'
+            labels:
+              severity: warning
+              source: grafana
+
+          - uid: ingress-latency-p95
+            title: Ingress p95 latency >1s
+            condition: C
+            data:
+              - refId: A
+                relativeTimeRange:
+                  from: 300
+                  to: 0
+                datasourceUid: prometheus
+                model:
+                  expr: histogram_quantile(0.95, sum by (le) (rate(traefik_entrypoint_request_duration_seconds_bucket[5m]))) * 1000 > 1000
+              - refId: C
+                datasourceUid: __expr__
+                model:
+                  type: threshold
+                  expression: A
+                  conditions:
+                    - evaluator:
+                        type: gt
+                        params: [0]
+                      operator: { type: and }
+                      query: { params: [A] }
+                      reducer: { type: last }
+                      type: query
+            noDataState: NoData
+            execErrState: Error
+            for: 5m
+            annotations:
+              summary: 'Ingress p95 latency >1s (current: {{ $value | humanizeDuration }})'
+            labels:
+              severity: warning
+              source: grafana
