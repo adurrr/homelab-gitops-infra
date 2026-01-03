@@ -118,9 +118,21 @@ spec:
             dashboards:
               enabled: true
               searchNamespace: ALL
+              # Use grafana_folder label to organize dashboards into folders
+              folder: "/grafana-dashboards"
             datasources:
               enabled: true
               searchNamespace: ALL
+          # Grafana unified alerting (Phase 2 of observability improvements)
+          # Contact points and alert rules are provisioned via the
+          # grafana_dashboard / grafana_alerting labels on ConfigMaps.
+          # See observability/alerts/ for example alert rules.
+          alerting:
+            enabled: true
+          # Annotation support: Grafana can show alerts on dashboard panels
+          # via annotations. The Alertmanager webhook config sends to
+          # grafana-annotation-sidecar which creates annotations.
+          # See: observability/alerts/grafana-annotations.md for the webhook config.
           ingress:
             enabled: true
             ingressClassName: traefik

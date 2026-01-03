@@ -51,6 +51,20 @@ spec:
           value: "true"
         - name: "metrics.prometheus.enabled"
           value: "true"
+        # Expose Traefik metrics port (9100) on the LoadBalancer service
+        # so Prometheus can scrape it. Port 9100 is the Traefik metrics endpoint.
+        - name: "service.spec.loadBalancer.ports.metrics.port"
+          value: "9100"
+        - name: "service.spec.loadBalancer.ports.metrics.targetPort"
+          value: "metrics"
+        # Pod annotation for Prometheus discovery (backup: pod-based scrape
+        # works even if the service annotation isn't picked up)
+        - name: "podAnnotations.prometheus\\.io/scrape"
+          value: "true"
+        - name: "podAnnotations.prometheus\\.io/port"
+          value: "9100"
+        - name: "podAnnotations.prometheus\\.io/path"
+          value: "/metrics"
         - name: "providers.kubernetesIngress.publishedService.enabled"
           value: "true"
   syncPolicy:
