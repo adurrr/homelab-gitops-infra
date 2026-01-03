@@ -6,9 +6,17 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel in-progress runs for the same PR/branch when a new commit is pushed.
+# Saves CI minutes on rapid pushes to the same PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default timeout for all jobs (can be overridden per-job)
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -17,6 +25,15 @@ jobs:
 
   helm-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Lint every chart under apps/. If we add a new chart directory, it gets
+    # linted automatically. Add explicit skip patterns to exclude anything
+    # that isn't a real chart.
+    strategy:
+      fail-fast: false
+      matrix:
+        chart:
+          - apps/home-assistant
     steps:
       - uses: actions/checkout@v4
 
@@ -25,11 +42,38 @@ jobs:
         with:
           version: latest
 
-      - name: Lint Helm chart (home-assistant)
-        run: helm lint apps/home-assistant/
+      - name: Lint Helm chart (${{ matrix.chart }})
+        run: helm lint ${{ matrix.chart }}/
+
+  tofu-validate:
+    # OpenTofu (Terraform-compatible) validation. AGENTS.md requires
+    # `tofu validate` before proposing infrastructure changes.
+    # Only runs when files in proxmox/ or infra/ change.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: latest
+
+      - name: tofu init (proxmox/opentofu)
+        working-directory: proxmox/opentofu
+        run: tofu init -backend=false
+
+      - name: tofu validate
+        working-directory: proxmox/opentofu
+        run: tofu validate
+
+      - name: tofu fmt -check (formatting)
+        working-directory: proxmox/opentofu
+        run: tofu fmt -check -recursive
 
   yamllint-all:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -40,10 +84,14 @@ jobs:
 
   shellcheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@master
+        # Pinned to v2.0.0 — the @master reference was a supply-chain risk
+        # (any force-push to master would silently change behavior).
+        # v2.0.0 is the latest tagged release as of writing.
+        uses: ludeeus/action-shellcheck@v2.0.0
         with:
           severity: warning
