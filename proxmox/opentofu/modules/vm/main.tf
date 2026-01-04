@@ -173,9 +173,9 @@ resource "proxmox_virtual_environment_vm" "vm" {
     datastore_id = var.disk_datastore
     interface    = "scsi0"
     size         = var.disk_size_gb
-      discard           = "on"
-      ssd               = true
-    }
+    discard      = "on"
+    ssd          = true
+  }
 
   network_device {
     bridge  = var.network_bridge

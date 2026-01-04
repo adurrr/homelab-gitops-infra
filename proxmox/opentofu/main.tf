@@ -52,8 +52,8 @@ provider "proxmox" {
   insecure  = var.proxmox_tls_insecure
 
   ssh {
-    agent       = true
-    username    = var.proxmox_ssh_user
+    agent    = true
+    username = var.proxmox_ssh_user
 
     node {
       name    = var.proxmox_node_name
@@ -130,8 +130,8 @@ module "prod_vm" {
   memory_mb      = 8192
   disk_size_gb   = 100
   network_bridge = "vmbr0"
-  network_vlan   = null                        # Untagged — same LAN as existing cluster
-  ip_address     = "192.168.50.65/24"          # Same subnet as existing master (192.168.50.60)
+  network_vlan   = null               # Untagged — same LAN as existing cluster
+  ip_address     = "192.168.50.65/24" # Same subnet as existing master (192.168.50.60)
   gateway        = "192.168.50.1"
   ssh_keys       = [file(pathexpand(var.ssh_public_key_path))]
   tags           = ["k8s", "env-prod", "role-agent"]

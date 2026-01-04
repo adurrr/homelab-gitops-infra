@@ -8,9 +8,9 @@ This file explains how to wire Alertmanager webhooks to Grafana annotations so a
 Prometheus → Alertmanager → webhook → alertmanager-telegram-bot
                                    ↓
                                    (Telegram notification)
-                                   
+
                              (also possible:)
-                                   
+
                                    → grafana-annotation-call
                                    ↓
                                    Grafana annotations API
