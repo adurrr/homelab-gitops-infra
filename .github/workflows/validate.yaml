@@ -12,7 +12,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Default timeout for all jobs (can be overridden per-job)
+# Least-privilege: only read repo contents. No step writes, so we
+# do not need contents: write or any other elevated scope.
+permissions:
+  contents: read
+
+# Single source of truth for linting is the `lint` job below, which runs
+# the full pre-commit suite defined in .pre-commit-config.yaml. The hooks
+# (yamllint, shellcheck, gitleaks, check-yaml, check-json, end-of-file,
+# trailing-whitespace, large-files, merge-conflict, private-key) cover
+# what the old yamllint-all and shellcheck jobs did — keeping them as
+# separate jobs would duplicate work and risk config drift.
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -24,16 +34,13 @@ jobs:
         uses: pre-commit/action@v3.0.1
 
   helm-lint:
+    # Discover every chart with a Chart.yaml and lint it. Adding a new
+    # chart directory auto-gets linted without editing this file.
+    # Linting sequentially (not matrix) because the homelab has only
+    # a handful of charts; matrix parallelism buys little here and a
+    # single failure path is easier to read in CI logs.
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Lint every chart under apps/. If we add a new chart directory, it gets
-    # linted automatically. Add explicit skip patterns to exclude anything
-    # that isn't a real chart.
-    strategy:
-      fail-fast: false
-      matrix:
-        chart:
-          - apps/home-assistant
     steps:
       - uses: actions/checkout@v4
 
@@ -42,56 +49,78 @@ jobs:
         with:
           version: latest
 
-      - name: Lint Helm chart (${{ matrix.chart }})
-        run: helm lint ${{ matrix.chart }}/
+      - name: Lint all Helm charts
+        run: |
+          set +e  # collect all failures, do not stop at first
+          charts=$(find . -name Chart.yaml \
+            -not -path './node_modules/*' \
+            -not -path './.git/*' \
+            -exec dirname {} \;)
+          if [ -z "$charts" ]; then
+            echo "No Helm charts with Chart.yaml found"
+            exit 0
+          fi
+          chart_count=$(printf '%s\n' "$charts" | wc -l)
+          echo "Found $chart_count Helm chart(s):"
+          printf '  - %s\n' $charts
+          echo ""
+          fail=0
+          for chart in $charts; do
+            echo "::group::helm lint $chart"
+            helm lint "$chart"
+            rc=$?
+            echo "::endgroup::"
+            if [ $rc -ne 0 ]; then
+              fail=1
+            fi
+          done
+          exit $fail
 
   tofu-validate:
     # OpenTofu (Terraform-compatible) validation. AGENTS.md requires
     # `tofu validate` before proposing infrastructure changes.
-    # Only runs when files in proxmox/ or infra/ change.
+    # Skipped unless files under proxmox/, infra/, or this workflow change.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 needed for paths-filter to compare against base
+          fetch-depth: 0
+
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          predicate-quantifier: some
+          filters: |
+            tofu:
+              - 'proxmox/**'
+              - 'infra/**'
+              - '.github/workflows/validate.yaml'
+
+      - name: Skip notice
+        if: steps.filter.outputs.tofu != 'true'
+        run: |
+          echo "No changes under proxmox/ or infra/ and no workflow change — skipping tofu validate."
 
       - name: Set up OpenTofu
+        if: steps.filter.outputs.tofu == 'true'
         uses: opentofu/setup-opentofu@v1
         with:
           tofu_version: latest
 
       - name: tofu init (proxmox/opentofu)
+        if: steps.filter.outputs.tofu == 'true'
         working-directory: proxmox/opentofu
         run: tofu init -backend=false
 
       - name: tofu validate
+        if: steps.filter.outputs.tofu == 'true'
         working-directory: proxmox/opentofu
         run: tofu validate
 
       - name: tofu fmt -check (formatting)
+        if: steps.filter.outputs.tofu == 'true'
         working-directory: proxmox/opentofu
         run: tofu fmt -check -recursive
-
-  yamllint-all:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: yamllint
-        uses: ibiqlik/action-yamllint@v3
-        with:
-          config_file: .yamllint
-
-  shellcheck:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run ShellCheck
-        # Pinned to v2.0.0 — the @master reference was a supply-chain risk
-        # (any force-push to master would silently change behavior).
-        # v2.0.0 is the latest tagged release as of writing.
-        uses: ludeeus/action-shellcheck@v2.0.0
-        with:
-          severity: warning
