@@ -1,0 +1,38 @@
+# =============================================================================
+# Policy: Block HostPath Mounts
+# =============================================================================
+# P0: Host filesystem isolation.
+# Blocks hostPath volumes except for known safe system paths (timezone, CA certs).
+# Prevents pods from reading/writing host filesystem directly.
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-hostpath-mounts
+  annotations:
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/category: Pod Security
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: host-path-mounts
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - argocd
+                - kyverno
+      validate:
+        message: "HostPath volumes are not allowed except for /usr/share/zoneinfo, /etc/localtime, and /etc/ssl/certs."
+        pattern:
+          spec:
+            =(volumes):
+              - =(hostPath):
+                  path: "/usr/share/zoneinfo|/etc/localtime|/etc/ssl/certs"

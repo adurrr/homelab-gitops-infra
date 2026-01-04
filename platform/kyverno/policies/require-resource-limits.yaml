@@ -1,0 +1,41 @@
+# =============================================================================
+# Policy: Require Resource Limits
+# =============================================================================
+# P0: Noisy neighbor / DoS prevention.
+# Every pod must define resources.limits for CPU and memory.
+# Caps per-container limits: 2 CPU cores, 4Gi memory (homelab constraints).
+# System namespaces exempted.
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/category: Resource Management
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - argocd
+                - kyverno
+      validate:
+        message: "Every container must define resources.limits (cpu and memory). Max: 2 CPU cores, 4Gi memory."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"

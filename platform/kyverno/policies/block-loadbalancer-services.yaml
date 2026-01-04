@@ -1,0 +1,36 @@
+# =============================================================================
+# Policy: Block LoadBalancer Services
+# =============================================================================
+# P1: Prevent unintended public exposure.
+# Blocks Service type: LoadBalancer outside permitted namespaces.
+# Only MetalLB (metallb-system) and Traefik (traefik) should create LBs.
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-loadbalancer-services
+  annotations:
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/category: Network Security
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: block-loadbalancer
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - metallb-system
+                - traefik
+                - kube-system
+      validate:
+        message: "Service type LoadBalancer is only allowed in metallb-system and traefik namespaces."
+        pattern:
+          spec:
+            =(type): "ClusterIP | NodePort"

@@ -1,0 +1,38 @@
+# =============================================================================
+# Policy: Block Latest Image Tags
+# =============================================================================
+# P2: Supply chain reproducibility.
+# Blocks container images tagged :latest, :main, and :master.
+# Pin specific versions or digests for reproducible deployments.
+# Exempts infrastructure images (rancher, cilium, kyverno, argocd).
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-latest-image-tag
+  annotations:
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/category: Supply Chain
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: block-latest-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - argocd
+                - kyverno
+      validate:
+        message: "Images must use a pinned version or digest. Tags 'latest', 'main', and 'master' are not allowed."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest & !*:main & !*:master"

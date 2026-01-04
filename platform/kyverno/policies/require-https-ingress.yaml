@@ -1,0 +1,36 @@
+# =============================================================================
+# Policy: Require TLS on Ingress Resources
+# =============================================================================
+# P1: Encryption in transit.
+# Every Ingress must include a tls section. No plain HTTP ingress allowed.
+# Internal-only services that use ClusterIP directly are not affected.
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-https-ingress
+  annotations:
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/category: Network Security
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-tls
+      match:
+        any:
+          - resources:
+              kinds:
+                - Ingress
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+      validate:
+        message: "All Ingress resources must include a TLS section with at least one host."
+        pattern:
+          spec:
+            tls:
+              - hosts:
+                  - "?*"

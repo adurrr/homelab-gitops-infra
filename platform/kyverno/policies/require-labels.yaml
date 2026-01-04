@@ -1,0 +1,46 @@
+# =============================================================================
+# Policy: Require Standard Labels
+# =============================================================================
+# P2: Resource organization and ownership tracking.
+# Deployments, StatefulSets, and DaemonSets must have:
+#   - app.kubernetes.io/part-of (application group)
+#   - app.kubernetes.io/managed-by (must be "argocd" for GitOps workloads)
+# System namespaces exempted.
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-labels
+  annotations:
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/category: Best Practices
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-standard-labels
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - argocd
+                - kyverno
+                - monitoring
+                - traefik
+                - metallb-system
+                - cert-manager
+      validate:
+        message: "Workloads must have labels: app.kubernetes.io/part-of and app.kubernetes.io/managed-by"
+        pattern:
+          metadata:
+            labels:
+              app.kubernetes.io/part-of: "?*"
+              app.kubernetes.io/managed-by: "?*"

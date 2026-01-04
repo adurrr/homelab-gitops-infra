@@ -1,0 +1,33 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Kyverno Policies Application
+# =============================================================================
+# Applies all Kyverno ClusterPolicy resources from platform/kyverno/policies/.
+# Sync wave 0: deploys AFTER Kyverno controller (wave -1) is running.
+# Policies start in Audit mode. Graduate to Enforce after 1-2 weeks.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  destination:
+    namespace: kyverno
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    path: platform/kyverno/policies
+    repoURL: https://github.com/adurrr/homelab-gitops-infra.git
+    targetRevision: HEAD
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

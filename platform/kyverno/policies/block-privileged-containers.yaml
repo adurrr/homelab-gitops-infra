@@ -1,0 +1,46 @@
+# =============================================================================
+# Policy: Block Privileged Containers
+# =============================================================================
+# P0: Container escape prevention.
+# Blocks any pod with securityContext.privileged: true.
+# System namespaces exempted (kube-system needs Cilium pod privileges).
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: block-privileged-containers
+  annotations:
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/category: Pod Security
+    policies.kyverno.io/description: >-
+      Privileged containers have access to all host devices and kernel
+      capabilities, enabling container escape. Block them everywhere
+      except system namespaces.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: privileged-containers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - argocd
+                - kyverno
+                - monitoring
+                - traefik
+                - metallb-system
+                - cert-manager
+      validate:
+        message: "Privileged containers are not allowed. Remove securityContext.privileged: true or request an exemption."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: "false"

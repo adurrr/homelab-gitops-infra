@@ -1,0 +1,77 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: ntfy Application
+# =============================================================================
+# Deploys ntfy: self-hosted HTTP-based pub/sub push notification service.
+# Replaces the RocketChat placeholder in Alertmanager config.
+#
+# Architecture: single Go binary, no external dependencies. Alertmanager
+# posts to http://ntfy.ntfy.svc.cluster.local/prometheus-alerts via webhook.
+# Phone subscribes to the prometheus-alerts topic via the ntfy app.
+#
+# Resource: ~50MB RAM, ~10m CPU — negligible.
+#
+# Telegram remains as secondary/fallback channel (continue: true on critical).
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ntfy
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  destination:
+    namespace: ntfy
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    repoURL: https://github.com/nicholaswilde/helm-charts
+    chart: ntfy
+    targetRevision: 0.2.0
+    helm:
+      values: |
+        image:
+          repository: binwiederhier/ntfy
+          tag: "2.11.0"
+          pullPolicy: IfNotPresent
+
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+
+        persistence:
+          enabled: true
+          size: 1Gi
+          storageClass: local-path
+
+        ingress:
+          enabled: true
+          className: traefik
+          hosts:
+            - host: ntfy.homelab.local
+              paths:
+                - path: /
+                  pathType: Prefix
+          tls:
+            - hosts:
+                - ntfy.homelab.local
+              secretName: ntfy-tls
+
+        env:
+          NTFY_BASE_URL: "https://ntfy.homelab.local"
+          NTFY_BEHIND_PROXY: "true"
+          NTFY_AUTH_DEFAULT_ACCESS: "deny-all"
+          NTFY_ENABLE_SIGNUP: "false"
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

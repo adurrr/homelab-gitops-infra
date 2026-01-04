@@ -1,0 +1,91 @@
+# =============================================================================
+# Homelab GitOps Infrastructure: Kyverno Application
+# =============================================================================
+# Deploys Kyverno policy engine for Kubernetes admission control.
+# Policies enforce: no privileged containers, no hostPath mounts, resource limits
+# required, no LoadBalancer services (except permitted namespaces), TLS on ingress,
+# no latest image tags, required labels, auto-generated default-deny NetworkPolicy.
+#
+# Sync wave -1: must deploy before any application workloads so policies
+# exist before pods try to schedule.
+#
+# CRITICAL: System namespaces (kube-system, argocd, metallb-system, traefik)
+# are permanently exempted. Without this, Kyverno's validating webhook blocks
+# K3s ServiceLB from creating pods during cluster startup → boot deadlock.
+#
+# Audit-first rollout: all policies start in Audit mode for 1-2 weeks.
+# PolicyReports surface violations. Graduate to Enforce per namespace.
+# =============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  destination:
+    namespace: kyverno
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    repoURL: https://kyverno.github.io/kyverno
+    chart: kyverno
+    targetRevision: 3.3.7
+    helm:
+      values: |
+        admissionController:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+
+        backgroundController:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+
+        reportsController:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+
+        cleanupController:
+          replicas: 1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+
+        # ===== CRITICAL: Prevent K3s boot deadlock =====
+        # Exempt system namespaces so Kyverno never blocks
+        # cluster-critical pod creation (ServiceLB, Cilium, CoreDNS).
+        webhooksRegistration:
+          exemptNamespaces:
+            - kube-system
+            - argocd
+            - monitoring
+            - traefik
+            - metallb-system
+            - cert-manager
+
+        features:
+          policyExceptions:
+            enabled: true
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

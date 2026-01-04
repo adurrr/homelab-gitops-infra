@@ -1,0 +1,102 @@
+# =============================================================================
+# Policy: Generate Default-Deny NetworkPolicy per Namespace
+# =============================================================================
+# Auto-creates a default-deny NetworkPolicy in every new namespace.
+# Namespaces must opt-in with label: security.homelab.local/default-deny: "true"
+# Prevents accidental open network access in new application namespaces.
+# Excludes system namespaces that already have custom policies.
+# =============================================================================
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-default-deny-nwpolicy
+  annotations:
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/category: Network Security
+spec:
+  generateExisting: false
+  rules:
+    - name: create-default-deny
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              selector:
+                matchLabels:
+                  security.homelab.local/default-deny: "true"
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - default
+                - argocd
+                - kyverno
+                - monitoring
+                - traefik
+                - metallb-system
+                - cert-manager
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: default-deny-all
+        namespace: "{{ request.object.metadata.name }}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Ingress
+              - Egress
+
+    # Companion rule: allow DNS egress to kube-dns in kube-system.
+    # NetworkPolicy is additive — default-deny-all blocks all egress,
+    # this rule explicitly allows DNS so workloads can still resolve names.
+    - name: allow-dns-egress
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              selector:
+                matchLabels:
+                  security.homelab.local/default-deny: "true"
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - default
+                - argocd
+                - kyverno
+                - monitoring
+                - traefik
+                - metallb-system
+                - cert-manager
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: allow-dns-egress
+        namespace: "{{ request.object.metadata.name }}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Egress
+            egress:
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+                    podSelector:
+                      matchLabels:
+                        k8s-app: kube-dns
+                ports:
+                  - protocol: UDP
+                    port: 53
+                  - protocol: TCP
+                    port: 53
