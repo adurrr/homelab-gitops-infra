@@ -13,6 +13,10 @@
 - [Phase 1: K3s Cluster with Cilium](#phase-1-k3s-cluster-with-cilium)
 - [Phase 2: ArgoCD & GitOps Bootstrap](#phase-2-argocd--gitops-bootstrap)
 - [Phase 3: Observability Stack](#phase-3-observability-stack)
+- [Phase 4: Security Foundation](#phase-4-security-foundation)
+- [Phase 5: Backup Infrastructure](#phase-5-backup-infrastructure)
+- [Phase 6: Self-Healing Alerts](#phase-6-self-healing-alerts)
+- [Phase 7: Application Workloads](#phase-7-application-workloads)
 - [Key Concepts Glossary](#key-concepts-glossary)
 
 ---
@@ -1005,6 +1009,67 @@ managed as JSON files, committed to Git, and auto-loaded via a sidecar container
 
 ---
 
+## Phase 4: Security Foundation
+
+> **Goal:** Add policy-as-code enforcement (Kyverno), secrets abstraction (ESO),
+> and self-hosted alert notifications (ntfy).
+
+**Status:** Planned (immediate priority). **Full spec:** [phase4-security-foundation.md](phase4-security-foundation.md)
+
+| Component | Gap It Fixes |
+|-----------|-------------|
+| **Kyverno** | Admission control; 8 policies (privileged, hostPath, limits, LB, HTTPS, tags, labels, NetworkPolicy generation) |
+| **External Secrets Operator** | Secrets abstraction between SealedSecrets (today) and Vault (future) via ExternalSecret CRD |
+| **ntfy** | Self-hosted push notifications; replaces RocketChat placeholder; 50MB RAM |
+
+Key decisions: [AD-007](../architecture.md#ad-007-kyverno-over-opa-gatekeeper-for-policy-as-code) (Kyverno over Gatekeeper), [AD-008](../architecture.md#ad-008-sealedsecrets--eso-over-hashicorp-vault-for-secrets-management) (ESO over Vault), [AD-009](../architecture.md#ad-009-ntfy-over-rocketchat-for-alert-notifications) (ntfy over RocketChat).
+
+---
+
+## Phase 5: Backup Infrastructure
+
+> **Goal:** Automated cluster backup via Velero + MinIO.
+
+**Status:** Planned (after Phase 4). **Full spec:** [phase5-backups.md](phase5-backups.md)
+
+| Component | Gap It Fixes |
+|-----------|-------------|
+| **MinIO** | S3-compatible object storage on local-path PVC (50Gi, standalone) |
+| **Velero 1.18** | K8s-native backup; Kopia file-system backup for PVCs (no CSI needed) |
+
+Backup schedules: daily cluster config (4 AM, 30d retention), stateful apps (every 6h, 7d retention). Media files excluded from Velero (NAS handles separately).
+
+Key decision: [AD-010](../architecture.md#ad-010-velero-118--minio-for-cluster-backups).
+
+---
+
+## Phase 6: Self-Healing Alerts
+
+> **Goal:** Automate safe, restart-based remediation for common failure modes.
+
+**Status:** Planned (after Phase 4+5 stable). **Full spec:** [phase6-self-healing.md](phase6-self-healing.md)
+
+Custom Go webhook receiver maps Alertmanager alerts to Kubernetes actions with safety guards (rate limit 3/hour, restartCount < 10, idempotency via annotation, dry-run first). Tier 1 only (restart-based). Tier 2 (PR-based memory limit changes) planned for later.
+
+Key decision: [AD-011](../architecture.md#ad-011-self-healing-tier-1-restart-only-with-safety-guards).
+
+---
+
+## Phase 7: Application Workloads
+
+> **Goal:** Photo management (Immich or PhotoPrism) and ARR stack deployment pattern.
+
+**Status:** Planned (after Phase 5+6). **Full spec:** [phase7-applications.md](phase7-applications.md)
+
+| Workstream | Decision | Key |
+|-----------|----------|-----|
+| **Photo Management** | Immich if RAM >= 8GB/node; PhotoPrism fallback | AD-012: mobile app decides it |
+| **ARR Stack** | External Docker VM, not in K3s | AD-013: no K8s benefit for *arr; Traefik routes via ExternalName |
+
+Key decisions: [AD-012](../architecture.md#ad-012-immich-over-photoprism-for-photo-management), [AD-013](../architecture.md#ad-013-arr-stack-on-external-vm-not-in-k3s), [AD-014](../architecture.md#ad-014-audit-first-rollout-for-all-security-policies).
+
+---
+
 ## Key Concepts Glossary
 
 | Term | Definition | Phase |
@@ -1032,15 +1097,31 @@ managed as JSON files, committed to Git, and auto-loaded via a sidecar container
 | **Retention** | How long data is kept before deletion (Prometheus: 15d, Loki: 28d) | 3 |
 | **Cardinality** | Number of unique label combinations: high cardinality = more memory | 3 |
 | **WAL** | Write-Ahead Log: crash safety mechanism for TSDBs | 3 |
+| **Admission Controller** | Webhook that validates/mutates resources before they are persisted to etcd | 4 |
+| **Policy-as-Code** | Security rules stored as version-controlled code (Kyverno ClusterPolicy) | 4 |
+| **ExternalSecret** | ESO CRD: declares what secret to sync from an external provider into a K8s Secret | 4 |
+| **SecretStore** | ESO CRD: configures how to authenticate to a secrets backend | 4 |
+| **FSB** | File-System Backup: Velero/Kopia method for backing up PVCs without CSI snapshots | 5 |
+| **Kopia** | Velero's default file-system uploader (replaced deprecated restic in v1.12) | 5 |
+| **RPO** | Recovery Point Objective: maximum acceptable data loss measured in time | 5 |
+| **S3-Compatible** | API-compatible with AWS S3 protocol; works with MinIO, Ceph, etc. | 5 |
+| **Tier 1 Self-Healing** | Safe, idempotent, reversible automated remediation (restart only) | 6 |
+| **Rate Limiter** | Mechanism to prevent infinite remediation loops (max N actions per time window) | 6 |
+| **OIDC** | OpenID Connect: authentication protocol; supported by Immich, PhotoPrism, Seerr | 7 |
+| **CLIP** | Contrastive Language-Image Pre-training: AI model for semantic image search (Immich) | 7 |
+| **VectorChord** | PostgreSQL extension for vector similarity search (Immich's ML backend) | 7 |
 
 ---
 
-> **Next:** [Phase 4: Home Assistant Application](../PLAN.md#7-phase-4--home-assistant-application)
->
 > **Related docs:**
-> - [Architecture Decisions](architecture.md): AD-001 through AD-006
+> - [Architecture Decisions](../architecture.md): AD-001 through AD-014
 > - [How to Run](HOW-TO-RUN.md): Step-by-step setup guide
-> - [Phase 1 Runbook](runbooks/phase1-k3s-cilium.md): Troubleshooting
-> - [Phase 2 Runbook](runbooks/phase2-argocd-gitops.md): Troubleshooting
-> - [Phase 3 Runbook](runbooks/phase3-observability.md): Troubleshooting
-> - [Glossary](glossary.md): Full terminology reference
+> - [PLAN.md](PLAN.md): Master execution plan
+> - [Phase 4: Security Foundation](phase4-security-foundation.md)
+> - [Phase 5: Backup Infrastructure](phase5-backups.md)
+> - [Phase 6: Self-Healing Alerts](phase6-self-healing.md)
+> - [Phase 7: Application Workloads](phase7-applications.md)
+> - [Phase 1 Runbook](../runbooks/phase1-k3s-cilium.md): Troubleshooting
+> - [Phase 2 Runbook](../runbooks/phase2-argocd-gitops.md): Troubleshooting
+> - [Phase 3 Runbook](../runbooks/phase3-observability.md): Troubleshooting
+> - [Glossary](../glossary.md): Full terminology reference
