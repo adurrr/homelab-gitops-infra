@@ -3,6 +3,17 @@
 # =============================================================================
 # Covers node readiness, memory/disk pressure, and Cilium agent health.
 # Thresholds tuned for a 2-node ARM64 cluster with 8GB RAM per node.
+#
+# IMPORTANT: The kube-prometheus-stack chart (defaulted at 86.3.1 via
+# observability/kube-prometheus-stack/values.yaml) ships its own
+# NodeFilesystemAlmostOutOfSpace rule that fires on ANY filesystem with
+# <3% available, including volatile tmpfs. We do NOT silence it here
+# because the proper fix is at the node level (see bootstrap-node role:
+# tmp.mount drop-in + K3s pod-shm-size=32Mi). Once those land, the
+# underlying tmpfs pressure disappears and the chart's rule stops firing.
+#
+# Our NodeDiskPressure rule below already filters fstype!="tmpfs" so it
+# only pages on real disk pressure on the root filesystem.
 # =============================================================================
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule

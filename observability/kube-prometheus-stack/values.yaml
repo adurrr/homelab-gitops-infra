@@ -3,7 +3,9 @@
 # =============================================================================
 # Prometheus + Grafana + Alertmanager for the 2-node ARM64 homelab cluster.
 # Reference: https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack
-# Chart version: 85.2.2
+# Chart version: 86.3.1
+# (reconciled from installed chart label app.kubernetes.io/version: 86.3.1;
+#  prior comment said 85.2.2 but ArgoCD deployed 86.3.1)
 # =============================================================================
 
 prometheus:
@@ -158,3 +160,22 @@ additionalScrapeConfigs:
       - source_labels: [__meta_kubernetes_pod_name]
         action: replace
         target_label: pod
+
+# =============================================================================
+# Filesystem alert handling (tmpfs /run pressure)
+# =============================================================================
+# The chart default `NodeFilesystemAlmostOutOfSpace` rule (critical, 30m) and
+# `NodeFilesystemSpaceFillingUp` (warning) fire on tmpfs /run because:
+#   1. /run is sized at 10% of RAM by systemd default (~385 MB on minipc).
+#   2. K3s containerd creates a 64 MiB shm tmpfs per sandbox in /run.
+#
+# We do NOT override these chart defaults here. The permanent fix is at
+# the node level via Ansible (see ansible/roles/bootstrap-node/):
+#   - Layer 1: tmp.mount drop-in scales /run to 25% of RAM.
+#   - Layer 2: K3s kubelet-arg pod-shm-size reduces per-sandbox shm to 32 MiB.
+#
+# Our custom alert at observability/rules/node-alerts.yaml:48 (NodeDiskPressure)
+# already filters fstype!="tmpfs" for the root filesystem, which is what humans
+# actually need to be paged on. Volatile tmpfs pressure resolves on pod restart
+# and is not paging-worthy.
+# =============================================================================

@@ -1,3 +1,11 @@
 ---
 # bootstrap-node defaults
 kernel_modules_persist: true
+
+# /run tmpfs size for systemd tmp.mount (Layer 1 of /run space fix).
+# systemd accepts size as bytes, % of RAM, or K/M/G suffix. We use % so
+# the value scales with node memory.
+tmpfs_run_size: "25%"
+
+# Per-pod /dev/shm cap (Layer 2 of /run space fix). K3s default is 64Mi.
+k3s_pod_shm_size: "32Mi"

@@ -89,3 +89,83 @@
       Kernel: {{ ansible_kernel }}
       Memory: {{ ansible_memtotal_mb }} MB
       CPUs: {{ ansible_processor_vcpus }}
+
+# =============================================================================
+# tmpfs /run sizing (Layer 1 of /run space fix)
+# =============================================================================
+- name: Ensure tmp.mount.d directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/tmp.mount.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags: [tmpfs, kernel, bootstrap]
+
+- name: Render systemd tmp.mount drop-in for /run size override
+  ansible.builtin.template:
+    src: tmp.mount.override.conf.j2
+    dest: /etc/systemd/system/tmp.mount.d/override.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  tags: [tmpfs, kernel, bootstrap]
+
+- name: Reload systemd to pick up tmp.mount drop-in
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+  tags: [tmpfs, kernel, bootstrap]
+
+# ansible-lint: command-instead-of-module is silenced here because
+# ansible.posix.mount does not support clean remount of tmpfs.
+# `mount -o remount /run` is the canonical Linux invocation; failure
+# (e.g. EBUSY) is non-fatal and the new size applies on next boot anyway.
+- name: Remount /run to apply new size immediately  # noqa: command-instead-of-module
+  ansible.builtin.command: mount -o remount /run
+  become: true
+  changed_when: true
+  failed_when: false
+  register: run_remount
+  tags: [tmpfs, kernel, bootstrap]
+
+# =============================================================================
+# K3s kubelet config - reduced pod shm size (Layer 2 of /run space fix)
+# =============================================================================
+- name: Ensure /etc/rancher/k3s directory exists
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: ansible_os_family in ['Debian', 'RedHat']
+  tags: [k3s, kernel, bootstrap]
+
+- name: Render K3s config.yaml with kubelet-arg pod-shm-size
+  ansible.builtin.template:
+    src: k3s-config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  when: ansible_os_family in ['Debian', 'RedHat']
+  register: k3s_config_rendered
+  tags: [k3s, kernel, bootstrap]
+
+- name: Warn that k3s service restart is required to apply kubelet-arg
+  ansible.builtin.debug:
+    msg: >-
+      K3s config.yaml was rendered to /etc/rancher/k3s/config.yaml.
+      Restart K3s to apply pod-shm-size: drain the node first
+      (kubectl drain <node> --ignore-daemonsets --delete-emptydir-data),
+      then systemctl restart k3s (server) or k3s-agent (agent),
+      then kubectl uncordon <node>.
+  when:
+    - ansible_os_family in ['Debian', 'RedHat']
+    - k3s_config_rendered is changed
+  tags: [k3s, kernel, bootstrap]
