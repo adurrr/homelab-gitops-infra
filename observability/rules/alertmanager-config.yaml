@@ -32,6 +32,19 @@ stringData:
         webhook_configs:
           - url: 'http://ntfy-ntfy.ntfy.svc.cluster.local/prometheus-alerts'
             send_resolved: true
+            headers:
+              Title: '{{ .CommonLabels.alertname }} ({{ .Status }})'
+              Priority: '{{ if eq .CommonLabels.severity "critical" }}urgent{{ else if eq .CommonLabels.severity "warning" }}high{{ else }}default{{ end }}'
+              Tags: 'rotating_light,{{ .CommonLabels.severity }}'
+              Click: '{{ .GeneratorURL }}'
+            body: |
+              {{ range .Alerts }}
+              • {{ .Annotations.summary }}
+              Namespace: {{ .Labels.namespace }}
+              {{ if .Annotations.description }}
+              {{ .Annotations.description }}
+              {{ end }}
+              {{ end }}
 
       - name: 'null'
 
