@@ -28,9 +28,9 @@ stringData:
           - url: 'http://alertmanager-telegram-bot.monitoring.svc.cluster.local:8080/alerts'
             send_resolved: true
 
-      - name: 'rocketchat'
+      - name: 'ntfy'
         webhook_configs:
-          - url: 'https://chat.example.com/hooks/REPLACE_WITH_ROCKETCHAT_WEBHOOK'
+          - url: 'http://ntfy-ntfy.ntfy.svc.cluster.local/prometheus-alerts'
             send_resolved: true
 
       - name: 'null'
@@ -72,6 +72,14 @@ stringData:
 
         - matchers:
             - severity = critical
+          receiver: 'ntfy'
+          continue: true
+          group_wait: 10s
+          group_interval: 5m
+          repeat_interval: 1h
+
+        - matchers:
+            - severity = critical
           receiver: 'telegram'
           group_wait: 10s
           group_interval: 5m
@@ -79,7 +87,7 @@ stringData:
 
         - matchers:
             - severity = warning
-          receiver: 'telegram'
+          receiver: 'ntfy'
           group_wait: 2m
           group_interval: 15m
           repeat_interval: 4h

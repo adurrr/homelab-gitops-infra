@@ -1,7 +1,7 @@
 # =============================================================================
 # Homelab GitOps Infrastructure: ntfy Application
 # =============================================================================
-# Deploys ntfy: self-hosted HTTP-based pub/sub push notification service.
+# Deploys ntfy: self-hosted HTTP-based push notification service.
 # Replaces the RocketChat placeholder in Alertmanager config.
 #
 # Architecture: single Go binary, no external dependencies. Alertmanager
@@ -11,6 +11,11 @@
 # Resource: ~50MB RAM, ~10m CPU — negligible.
 #
 # Telegram remains as secondary/fallback channel (continue: true on critical).
+#
+# Chart source: oci://ghcr.io/helmforgedev/helm (HelmForge, v1.1.0,
+# actively maintained, uses binwiederhier/ntfy upstream image).
+# Previous source (nicholaswilde/helm-charts) was unmaintained and
+# failed ArgoCD repo-server fetch with "error fetch" ComparisonError.
 # =============================================================================
 
 apiVersion: argoproj.io/v1alpha1
@@ -28,14 +33,14 @@ spec:
     server: https://kubernetes.default.svc
   project: default
   source:
-    repoURL: https://github.com/nicholaswilde/helm-charts
+    repoURL: ghcr.io/helmforgedev/charts
     chart: ntfy
-    targetRevision: 0.2.0
+    targetRevision: 1.1.0
     helm:
       values: |
         image:
-          repository: binwiederhier/ntfy
-          tag: "2.11.0"
+          repository: docker.io/binwiederhier/ntfy
+          tag: "v2.24.0"
           pullPolicy: IfNotPresent
 
         resources:
@@ -53,7 +58,7 @@ spec:
 
         ingress:
           enabled: true
-          className: traefik
+          ingressClassName: traefik
           hosts:
             - host: ntfy.homelab.local
               paths:
@@ -64,11 +69,16 @@ spec:
                 - ntfy.homelab.local
               secretName: ntfy-tls
 
-        env:
-          NTFY_BASE_URL: "https://ntfy.homelab.local"
-          NTFY_BEHIND_PROXY: "true"
-          NTFY_AUTH_DEFAULT_ACCESS: "deny-all"
-          NTFY_ENABLE_SIGNUP: "false"
+        ntfy:
+          extraEnv:
+            - name: NTFY_BASE_URL
+              value: "https://ntfy.homelab.local"
+            - name: NTFY_BEHIND_PROXY
+              value: "true"
+            - name: NTFY_AUTH_DEFAULT_ACCESS
+              value: "deny-all"
+            - name: NTFY_ENABLE_SIGNUP
+              value: "false"
   syncPolicy:
     automated:
       prune: true
