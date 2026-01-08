@@ -1,3 +1,11 @@
 ---
 # bootstrap-node defaults
 kernel_modules_persist: true
+
+# /run tmpfs size override (permanent fix for NodeFilesystemAlmostOutOfSpace).
+# systemd reads /etc/fstab during early boot and prefers explicit entries
+# over its implicit /run mount. Sized at 25% of RAM (~950 MB on minipc,
+# ~2 GB on mamba) to absorb K3s sandbox shm reservations (27 x 64 MiB
+# theoretical peak on minipc = ~1.7 GB; actual usage is much lower since
+# tmpfs is lazy-allocated and the cluster has no shm-heavy workloads).
+tmpfs_run_size: "25%"

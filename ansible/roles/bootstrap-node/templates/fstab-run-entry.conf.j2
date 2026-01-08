@@ -1,0 +1,15 @@
+# =============================================================================
+# /run tmpfs size override
+# =============================================================================
+# systemd mounts /run implicitly during early boot as tmpfs sized at
+# 10% of RAM (~385 MB on the 3.8 GB minipc). K3s containerd creates
+# a 64 MiB shm tmpfs per sandbox inside /run; with ~27 sandboxes the
+# theoretical peak reservation is ~1.7 GB, which exceeds the default
+# capacity and causes the NodeFilesystemAlmostOutOfSpace Prometheus
+# alert (critical, 30m).
+#
+# Adding an entry to /etc/fstab overrides systemd's implicit mount
+# with our explicit one at boot time. We then remount live so the new
+# size applies immediately without waiting for a reboot.
+# =============================================================================
+tmpfs /run tmpfs mode=755,nosuid,nodev,noexec,size={{ tmpfs_run_size }} 0 0

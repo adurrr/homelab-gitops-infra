@@ -89,3 +89,51 @@
       Kernel: {{ ansible_kernel }}
       Memory: {{ ansible_memtotal_mb }} MB
       CPUs: {{ ansible_processor_vcpus }}
+
+# =============================================================================
+# tmpfs /run sizing (permanent fix for NodeFilesystemAlmostOutOfSpace)
+# =============================================================================
+# systemd mounts /run implicitly as tmpfs at 10% of RAM (~385 MB on
+# the 3.8 GB minipc). K3s containerd creates a 64 MiB shm tmpfs per
+# sandbox inside /run; 27 active sandboxes on minipc = theoretical peak
+# ~1.7 GB reserved on a 385 MB tmpfs, which causes the chart's
+# NodeFilesystemAlmostOutOfSpace rule to fire when shm usage spikes.
+#
+# Adding an explicit /etc/fstab entry overrides systemd's implicit mount
+# at boot. The live remount below applies the new size immediately
+# without requiring a reboot.
+
+- name: Ensure tmpfs /run override entry is present in /etc/fstab
+  ansible.posix.mount:
+    path: /run
+    src: tmpfs
+    fstype: tmpfs
+    opts: "mode=755,nosuid,nodev,noexec,size={{ tmpfs_run_size }}"
+    state: present
+  become: true
+  tags: [tmpfs, kernel, bootstrap]
+
+# ansible-lint: command-instead-of-module is silenced here because
+# ansible.posix.mount does not support clean remount of tmpfs (state:
+# remounted does not work on tmpfs mounts in the underlying module
+# implementation). `mount -o remount,size=...` is the canonical Linux
+# invocation; failure (e.g. EBUSY) is non-fatal and the new size will
+# apply on next boot via the /etc/fstab entry added above.
+- name: Remount /run to apply new size immediately  # noqa: command-instead-of-module
+  ansible.builtin.command: mount -o remount,size={{ tmpfs_run_size }} /run
+  become: true
+  changed_when: true
+  failed_when: false
+  register: run_remount
+  tags: [tmpfs, kernel, bootstrap]
+
+- name: Verify /run size after remount
+  ansible.builtin.command: df -h /run
+  register: run_df
+  changed_when: false
+  tags: [tmpfs, kernel, bootstrap]
+
+- name: Show /run verification
+  ansible.builtin.debug:
+    msg: "{{ run_df.stdout_lines }}"
+  tags: [tmpfs, kernel, bootstrap]
